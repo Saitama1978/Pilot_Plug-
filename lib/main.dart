@@ -43,17 +43,35 @@ class MainDashboard extends StatefulWidget {
 class _MainDashboardState extends State<MainDashboard> {
   int _selectedIndex = 0;
 
-  final List<Widget> _pages = [
-    const PilotageScreen(),
-    const DockingScreen(),
-    const BridgeWingScreen(),
-    const TrainingScreen(),
-    const TestingScreen(),
-    const MaintenanceScreen(),
-  ];
+  // Real-time / Editable Docking Parameters
+  double bowDistance = 0.57;
+  double lateralSpeed = 4.00;
+  double sternDistance = 0.12;
+
+  void _updateDockingData(double bow, double speed, double stern) {
+    setState(() {
+      bowDistance = bow;
+      lateralSpeed = speed;
+      sternDistance = stern;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
+    final List<Widget> pages = [
+      const PilotageScreen(),
+      DockingScreen(
+        bowDistance: bowDistance,
+        lateralSpeed: lateralSpeed,
+        sternDistance: sternDistance,
+        onUpdate: _updateDockingData,
+      ),
+      const BridgeWingScreen(),
+      const TrainingScreen(),
+      const TestingScreen(),
+      const MaintenanceScreen(),
+    ];
+
     return Scaffold(
       appBar: AppBar(
         backgroundColor: const Color(0xFF161B22),
@@ -83,7 +101,7 @@ class _MainDashboardState extends State<MainDashboard> {
           ),
         ],
       ),
-      body: _pages[_selectedIndex],
+      body: pages[_selectedIndex],
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _selectedIndex,
         onTap: (index) => setState(() => _selectedIndex = index),
@@ -114,7 +132,7 @@ class PilotageScreen extends StatefulWidget {
 }
 
 class _PilotageScreenState extends State<PilotageScreen> {
-  LatLng _currentPosition = const LatLng(14.5995, 120.9842); // Default: Manila
+  LatLng _currentPosition = const LatLng(14.5995, 120.9842);
   double _speedKnots = 0.0;
   double _heading = 0.0;
   bool _isLoading = true;
@@ -143,7 +161,6 @@ class _PilotageScreenState extends State<PilotageScreen> {
       }
     }
 
-    // Start live tracking from Mobile GPS
     _positionStream = Geolocator.getPositionStream(
       locationSettings: const LocationSettings(
         accuracy: LocationAccuracy.high,
@@ -152,7 +169,7 @@ class _PilotageScreenState extends State<PilotageScreen> {
     ).listen((Position position) {
       setState(() {
         _currentPosition = LatLng(position.latitude, position.longitude);
-        _speedKnots = position.speed * 1.94384; // Convert m/s to Knots
+        _speedKnots = position.speed * 1.94384;
         _heading = position.heading;
         _isLoading = false;
       });
@@ -173,7 +190,6 @@ class _PilotageScreenState extends State<PilotageScreen> {
       padding: const EdgeInsets.all(12.0),
       child: Column(
         children: [
-          // Header Status Bar
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
             decoration: BoxDecoration(
@@ -206,8 +222,6 @@ class _PilotageScreenState extends State<PilotageScreen> {
             ),
           ),
           const SizedBox(height: 10),
-
-          // Telemetry Grid (Live from Phone GPS)
           Row(
             children: [
               _buildCard('COG', '${_heading.toStringAsFixed(1)}°', Colors.white),
@@ -218,8 +232,6 @@ class _PilotageScreenState extends State<PilotageScreen> {
             ],
           ),
           const SizedBox(height: 10),
-
-          // Interactive Map with Mobile GPS Position
           Expanded(
             child: ClipRRect(
               borderRadius: BorderRadius.circular(12),
@@ -306,17 +318,71 @@ class _PilotageScreenState extends State<PilotageScreen> {
   }
 }
 
-class BridgeWingScreen extends StatelessWidget {
-  const BridgeWingScreen({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return const Center(child: Text('Bridge Wing View (GPS Active)', style: TextStyle(color: Colors.white70)));
-  }
-}
-
 class DockingScreen extends StatelessWidget {
-  const DockingScreen({super.key});
+  final double bowDistance;
+  final double lateralSpeed;
+  final double sternDistance;
+  final Function(double, double, double) onUpdate;
+
+  const DockingScreen({
+    super.key,
+    required this.bowDistance,
+    required this.lateralSpeed,
+    required this.sternDistance,
+    required this.onUpdate,
+  });
+
+  void _showEditDialog(BuildContext context) {
+    final bowController = TextEditingController(text: bowDistance.toStringAsFixed(2));
+    final speedController = TextEditingController(text: lateralSpeed.toStringAsFixed(2));
+    final sternController = TextEditingController(text: sternDistance.toStringAsFixed(2));
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: const Color(0xFF161B22),
+          title: const Text('Edit Docking Parameters', style: TextStyle(color: Colors.blueAccent)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: bowController,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: const InputDecoration(labelText: 'Bow Distance (NM)', labelStyle: TextStyle(color: Colors.grey)),
+              ),
+              TextField(
+                controller: speedController,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: const InputDecoration(labelText: 'Lateral Speed (kn)', labelStyle: TextStyle(color: Colors.grey)),
+              ),
+              TextField(
+                controller: sternController,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: const InputDecoration(labelText: 'Stern Distance (NM)', labelStyle: TextStyle(color: Colors.grey)),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                final bow = double.tryParse(bowController.text) ?? bowDistance;
+                final speed = double.tryParse(speedController.text) ?? lateralSpeed;
+                final stern = double.tryParse(sternController.text) ?? sternDistance;
+                onUpdate(bow, speed, stern);
+                Navigator.pop(context);
+              },
+              child: const Text('Save'),
+            ),
+          ],
+        );
+      },
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -324,8 +390,18 @@ class DockingScreen extends StatelessWidget {
       padding: const EdgeInsets.all(16.0),
       child: Column(
         children: [
-          const Text('DOCKING PREDICTION TOOL', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blueAccent)),
-          const SizedBox(height: 16),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text('DOCKING PREDICTION TOOL', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blueAccent, fontSize: 16)),
+              IconButton(
+                icon: const Icon(Icons.edit, color: Colors.cyanAccent),
+                onPressed: () => _showEditDialog(context),
+                tooltip: 'Manual Edit Values',
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
           Expanded(
             child: Container(
               width: double.infinity,
@@ -338,15 +414,15 @@ class DockingScreen extends StatelessWidget {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.spaceAround,
                 children: [
-                  _buildDockingMetric('BOW DISTANCE', '0.57 NM', Colors.redAccent),
-                  _buildDockingMetric('LATERAL SPEED', '4.00 kn', Colors.greenAccent),
-                  _buildDockingMetric('STERN DISTANCE', '0.12 NM', Colors.lightBlueAccent),
+                  _buildDockingMetric('BOW DISTANCE', '${bowDistance.toStringAsFixed(2)} NM', Colors.redAccent),
+                  _buildDockingMetric('LATERAL SPEED', '${lateralSpeed.toStringAsFixed(2)} kn', Colors.greenAccent),
+                  _buildDockingMetric('STERN DISTANCE', '${sternDistance.toStringAsFixed(2)} NM', Colors.lightBlueAccent),
                 ],
               ),
             ),
           ),
           const SizedBox(height: 12),
-          const Text('Developed by Renante Fullo', style: TextStyle(color: Colors.grey, fontSize: 12)),
+          const Text('Developed by Renante Fullo • Tap ✏️ to edit values', style: TextStyle(color: Colors.grey, fontSize: 12)),
         ],
       ),
     );
@@ -357,9 +433,18 @@ class DockingScreen extends StatelessWidget {
       children: [
         Text(title, style: const TextStyle(color: Colors.grey, fontSize: 12)),
         const SizedBox(height: 4),
-        Text(value, style: TextStyle(color: color, fontSize: 26, fontWeight: FontWeight.bold)),
+        Text(value, style: TextStyle(color: color, fontSize: 28, fontWeight: FontWeight.bold)),
       ],
     );
+  }
+}
+
+class BridgeWingScreen extends StatelessWidget {
+  const BridgeWingScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return const Center(child: Text('Bridge Wing View', style: TextStyle(color: Colors.white70)));
   }
 }
 
@@ -368,9 +453,7 @@ class TrainingScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Center(
-      child: Text('Training Mode', style: TextStyle(color: Colors.white70)),
-    );
+    return const Center(child: Text('Training Mode', style: TextStyle(color: Colors.white70)));
   }
 }
 
@@ -379,9 +462,7 @@ class TestingScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Center(
-      child: Text('NMEA & GPS Stream Tester', style: TextStyle(color: Colors.amberAccent)),
-    );
+    return const Center(child: Text('NMEA & GPS Stream Tester', style: TextStyle(color: Colors.amberAccent)));
   }
 }
 
@@ -390,8 +471,6 @@ class MaintenanceScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Center(
-      child: Text('System Maintenance', style: TextStyle(color: Colors.white54)),
-    );
+    return const Center(child: Text('System Maintenance', style: TextStyle(color: Colors.white54)));
   }
 }
