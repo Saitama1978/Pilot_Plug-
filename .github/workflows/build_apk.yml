@@ -15,6 +15,13 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
+      - name: Fix Folder Case
+        run: |
+          if [ -d "Lib" ]; then mv Lib lib; fi
+
+      - name: Backup Custom Pubspec
+        run: cp pubspec.yaml pubspec.yaml.bak
+
       - name: Set up Java
         uses: actions/setup-java@v3
         with:
@@ -29,6 +36,9 @@ jobs:
 
       - name: Generate Android Project Files
         run: flutter create . --overwrite --platforms=android --project-name=pilot_plug
+
+      - name: Restore Custom Pubspec
+        run: cp pubspec.yaml.bak pubspec.yaml
 
       - name: Update Kotlin Version
         run: |
