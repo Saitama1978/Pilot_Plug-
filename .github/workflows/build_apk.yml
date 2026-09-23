@@ -28,7 +28,7 @@ jobs:
           channel: 'stable'
 
       - name: Generate Android Project Files
-        run: flutter create . --force --platforms=android --project-name=pilot_plug
+        run: flutter create . --overwrite --platforms=android --project-name=pilot_plug
 
       - name: Update Kotlin Version
         run: |
