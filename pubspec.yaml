@@ -1,51 +1,31 @@
-name: Build Android APK
+name: pilot_plug
+description: "Pilot Plug Navigation App by Renante Fullo"
+publish_to: 'none'
+version: 1.0.0+1
 
-on:
-  push:
-    branches:
-      - main
-      - master
-  workflow_dispatch:
+environment:
+  sdk: '>=3.0.0 <4.0.0'
 
-jobs:
-  build:
-    runs-on: ubuntu-latest
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.6
+  flutter_map: ^6.1.0
+  latlong2: ^0.9.1
+  geolocator: ^11.0.0
 
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+  flutter_launcher_icons: "^0.13.1"
 
-      - name: Set up Java
-        uses: actions/setup-java@v3
-        with:
-          distribution: 'zulu'
-          java-version: '17'
+flutter_launcher_icons:
+  android: true
+  ios: false
+  image_path: "icon.png"
 
-      - name: Set up Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          flutter-version: '3.19.x'
-          channel: 'stable'
-
-      - name: Generate Android Project Files
-        run: flutter create . --platforms=android --project-name=pilot_plug
-
-      - name: Update Kotlin Version
-        run: |
-          sed -i 's/ext.kotlin_version = .*/ext.kotlin_version = "1.9.22"/' android/build.gradle || true
-          sed -i 's/id "org.jetbrains.kotlin.android" version "[^"]*"/id "org.jetbrains.kotlin.android" version "1.9.22"/' android/settings.gradle || true
-
-      - name: Install Dependencies
-        run: flutter pub get
-
-      - name: Generate App Launcher Icon
-        run: dart run flutter_launcher_icons
-
-      - name: Build Release APK
-        run: flutter build apk --release --no-tree-shake-icons
-
-      - name: Upload APK Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: pilot-plug-app-release
-          path: build/app/outputs/flutter-apk/app-release.apk
+flutter:
+  uses-material-design: true
+  assets:
+    - icon.png
