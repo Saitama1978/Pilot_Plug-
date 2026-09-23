@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
 
 void main() {
   runApp(const PilotPlugApp());
@@ -42,10 +44,10 @@ class _MainDashboardState extends State<MainDashboard> {
   final List<Widget> _pages = [
     const PilotageScreen(),
     const DockingScreen(),
-    const Center(child: Text('Bridge Wing View', style: TextStyle(color: Colors.white70))),
-    const Center(child: Text('Training Mode', style: TextStyle(color: Colors.white70))),
-    const Center(child: Text('NMEA Testing', style: TextStyle(color: Colors.white70))),
-    const Center(child: Text('Maintenance', style: TextStyle(color: Colors.white70))),
+    const BridgeWingScreen(),
+    const TrainingScreen(),
+    const TestingScreen(),
+    const MaintenanceScreen(),
   ];
 
   @override
@@ -107,6 +109,8 @@ class PilotageScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    const vesselPosition = LatLng(14.5995, 120.9842); // Manila Port Area coordinates
+
     return Padding(
       padding: const EdgeInsets.all(12.0),
       child: Column(
@@ -147,26 +151,59 @@ class PilotageScreen extends StatelessWidget {
           ),
           const SizedBox(height: 10),
 
-          // Map & Live Target Area
+          // Interactive Dark Mode Map
           Expanded(
-            child: Container(
-              width: double.infinity,
-              decoration: BoxDecoration(
-                color: const Color(0xFF11161D),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.white12),
-              ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(12),
               child: Stack(
                 children: [
-                  const Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.map_outlined, size: 64, color: Colors.white24),
-                        SizedBox(height: 8),
-                        Text('Live AIS Map & Vector Display', style: TextStyle(color: Colors.white54)),
-                      ],
+                  FlutterMap(
+                    options: const MapOptions(
+                      initialCenter: vesselPosition,
+                      initialZoom: 13.5,
                     ),
+                    children: [
+                      TileLayer(
+                        urlTemplate: 'https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
+                        userAgentPackageName: 'com.example.pilot_plug',
+                      ),
+                      PolylineLayer(
+                        polylines: [
+                          Polyline(
+                            points: const [
+                              vesselPosition,
+                              LatLng(14.5800, 120.9600),
+                            ],
+                            strokeWidth: 3.0,
+                            color: Colors.cyanAccent,
+                          ),
+                        ],
+                      ),
+                      MarkerLayer(
+                        markers: [
+                          Marker(
+                            point: vesselPosition,
+                            width: 50,
+                            height: 50,
+                            child: const Icon(
+                              Icons.navigation,
+                              color: Colors.redAccent,
+                              size: 36,
+                            ),
+                          ),
+                          const Marker(
+                            point: LatLng(14.6100, 120.9700),
+                            width: 40,
+                            height: 40,
+                            child: Icon(
+                              Icons.directions_boat,
+                              color: Colors.greenAccent,
+                              size: 28,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
                   Positioned(
                     bottom: 12,
@@ -181,7 +218,7 @@ class PilotageScreen extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text('Developer: Renante Fullo', style: TextStyle(color: Colors.blueAccent, fontSize: 11, fontWeight: FontWeight.bold)),
-                          Text('Offline maps • No ads', style: TextStyle(color: Colors.grey, fontSize: 10)),
+                          Text('14°35.97\'N 120°59.05\'E', style: TextStyle(color: Colors.white70, fontSize: 10)),
                         ],
                       ),
                     ),
@@ -212,6 +249,60 @@ class PilotageScreen extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+class BridgeWingScreen extends StatelessWidget {
+  const BridgeWingScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    const vesselPosition = LatLng(14.5995, 120.9842);
+
+    return Column(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(12),
+          color: const Color(0xFF161B22),
+          child: const Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              Text('PORT: 0.52 NM', style: TextStyle(color: Colors.amberAccent, fontWeight: FontWeight.bold)),
+              Text('CENTER ALIGN', style: TextStyle(color: Colors.greenAccent, fontWeight: FontWeight.bold)),
+              Text('STBD: 0.48 NM', style: TextStyle(color: Colors.amberAccent, fontWeight: FontWeight.bold)),
+            ],
+          ),
+        ),
+        Expanded(
+          child: FlutterMap(
+            options: const MapOptions(
+              initialCenter: vesselPosition,
+              initialZoom: 15.0,
+            ),
+            children: [
+              TileLayer(
+                urlTemplate: 'https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
+                userAgentPackageName: 'com.example.pilot_plug',
+              ),
+              MarkerLayer(
+                markers: [
+                  Marker(
+                    point: vesselPosition,
+                    width: 60,
+                    height: 60,
+                    child: const Icon(
+                      Icons.navigation,
+                      color: Colors.blueAccent,
+                      size: 48,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }
@@ -260,6 +351,66 @@ class DockingScreen extends StatelessWidget {
         const SizedBox(height: 4),
         Text(value, style: TextStyle(color: color, fontSize: 26, fontWeight: FontWeight.bold)),
       ],
+    );
+  }
+}
+
+class TrainingScreen extends StatelessWidget {
+  const TrainingScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return const Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.school, size: 64, color: Colors.blueAccent),
+          SizedBox(height: 12),
+          Text('Pilotage Simulation & Training', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          SizedBox(height: 8),
+          Text('Developer: Renante Fullo', style: TextStyle(color: Colors.grey)),
+        ],
+      ),
+    );
+  }
+}
+
+class TestingScreen extends StatelessWidget {
+  const TestingScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return const Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.build, size: 64, color: Colors.amberAccent),
+          SizedBox(height: 12),
+          Text('NMEA & Wi-Fi Data Stream Tester', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          SizedBox(height: 8),
+          Text('Status: Connected to Pilot Plug Port', style: TextStyle(color: Colors.greenAccent)),
+        ],
+      ),
+    );
+  }
+}
+
+class MaintenanceScreen extends StatelessWidget {
+  const MaintenanceScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return const Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.settings, size: 64, color: Colors.grey),
+          SizedBox(height: 12),
+          Text('System Maintenance & Calibration', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          SizedBox(height: 8),
+          Text('Pilot Plug App v1.0.0', style: TextStyle(color: Colors.white54)),
+        ],
+      ),
     );
   }
 }
