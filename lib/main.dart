@@ -1,13 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
-import 'package:flutter_map_tile_caching/flutter_map_tile_caching.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
 import 'dart:async';
 
-void main() async {
+void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  await FMTCStore('mapStore').manage.create();
   runApp(const PilotPlugApp());
 }
 
@@ -151,7 +149,7 @@ class _PilotageScreenState extends State<PilotageScreen> {
   Future<void> _initGPS() async {
     bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) {
-      setState(() => _isLoading = false);
+      if (mounted) setState(() => _isLoading = false);
       return;
     }
 
@@ -159,7 +157,7 @@ class _PilotageScreenState extends State<PilotageScreen> {
     if (permission == LocationPermission.denied) {
       permission = await Geolocator.requestPermission();
       if (permission == LocationPermission.denied) {
-        setState(() => _isLoading = false);
+        if (mounted) setState(() => _isLoading = false);
         return;
       }
     }
@@ -170,14 +168,16 @@ class _PilotageScreenState extends State<PilotageScreen> {
         distanceFilter: 1,
       ),
     ).listen((Position position) {
-      setState(() {
-        _currentPosition = LatLng(position.latitude, position.longitude);
-        _speedKnots = position.speed * 1.94384;
-        _heading = position.heading;
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _currentPosition = LatLng(position.latitude, position.longitude);
+          _speedKnots = position.speed * 1.94384;
+          _heading = position.heading;
+          _isLoading = false;
+        });
 
-      _mapController.move(_currentPosition, _mapController.camera.zoom);
+        _mapController.move(_currentPosition, _mapController.camera.zoom);
+      }
     });
   }
 
@@ -250,7 +250,6 @@ class _PilotageScreenState extends State<PilotageScreen> {
                       TileLayer(
                         urlTemplate: 'https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
                         userAgentPackageName: 'com.example.pilot_plug',
-                        tileProvider: FMTCStore('mapStore').getTileProvider(),
                       ),
                       MarkerLayer(
                         markers: [
