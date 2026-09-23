@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:geolocator/geolocator.dart';
+import 'dart:async';
 
 void main() {
   runApp(const PilotPlugApp());
@@ -74,7 +76,7 @@ class _MainDashboardState extends State<MainDashboard> {
                 children: const [
                   SizedBox(height: 10),
                   Text('Developer: Renante Fullo', style: TextStyle(fontWeight: FontWeight.bold)),
-                  Text('Live AIS, NMEA & Docking Data Viewer'),
+                  Text('Live AIS, NMEA & GPS Data Viewer'),
                 ],
               );
             },
@@ -104,13 +106,69 @@ class _MainDashboardState extends State<MainDashboard> {
   }
 }
 
-class PilotageScreen extends StatelessWidget {
+class PilotageScreen extends StatefulWidget {
   const PilotageScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    const vesselPosition = LatLng(14.5995, 120.9842); // Manila Port Area coordinates
+  State<PilotageScreen> createState() => _PilotageScreenState();
+}
 
+class _PilotageScreenState extends State<PilotageScreen> {
+  LatLng _currentPosition = const LatLng(14.5995, 120.9842); // Default: Manila
+  double _speedKnots = 0.0;
+  double _heading = 0.0;
+  bool _isLoading = true;
+  StreamSubscription<Position>? _positionStream;
+  final MapController _mapController = MapController();
+
+  @override
+  void initState() {
+    super.initState();
+    _initGPS();
+  }
+
+  Future<void> _initGPS() async {
+    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      setState(() => _isLoading = false);
+      return;
+    }
+
+    LocationPermission permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied) {
+        setState(() => _isLoading = false);
+        return;
+      }
+    }
+
+    // Start live tracking from Mobile GPS
+    _positionStream = Geolocator.getPositionStream(
+      locationSettings: const LocationSettings(
+        accuracy: LocationAccuracy.high,
+        distanceFilter: 1,
+      ),
+    ).listen((Position position) {
+      setState(() {
+        _currentPosition = LatLng(position.latitude, position.longitude);
+        _speedKnots = position.speed * 1.94384; // Convert m/s to Knots
+        _heading = position.heading;
+        _isLoading = false;
+      });
+
+      _mapController.move(_currentPosition, _mapController.camera.zoom);
+    });
+  }
+
+  @override
+  void dispose() {
+    _positionStream?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.all(12.0),
       child: Column(
@@ -123,82 +181,74 @@ class PilotageScreen extends StatelessWidget {
               borderRadius: BorderRadius.circular(8),
               border: Border.all(color: Colors.blueAccent.withOpacity(0.3)),
             ),
-            child: const Row(
+            child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Row(
                   children: [
-                    Icon(Icons.circle, color: Colors.greenAccent, size: 10),
-                    SizedBox(width: 6),
-                    Text('LIVE AIS & NMEA', style: TextStyle(color: Colors.greenAccent, fontWeight: FontWeight.bold, fontSize: 12)),
+                    Icon(Icons.circle, color: _isLoading ? Colors.amber : Colors.greenAccent, size: 10),
+                    const SizedBox(width: 6),
+                    Text(
+                      _isLoading ? 'ACQUIRING GPS...' : 'MOBILE GPS ACTIVE',
+                      style: TextStyle(
+                        color: _isLoading ? Colors.amber : Colors.greenAccent,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12,
+                      ),
+                    ),
                   ],
                 ),
-                Text('ROT: +7.8°/min', style: TextStyle(color: Colors.cyanAccent, fontWeight: FontWeight.bold, fontSize: 12)),
+                Text(
+                  'LAT: ${_currentPosition.latitude.toStringAsFixed(4)}°',
+                  style: const TextStyle(color: Colors.cyanAccent, fontWeight: FontWeight.bold, fontSize: 12),
+                ),
               ],
             ),
           ),
           const SizedBox(height: 10),
 
-          // Telemetry Grid
+          // Telemetry Grid (Live from Phone GPS)
           Row(
             children: [
-              _buildCard('HDG', '136.0°', Colors.white),
+              _buildCard('COG', '${_heading.toStringAsFixed(1)}°', Colors.white),
               const SizedBox(width: 8),
-              _buildCard('COG', '130.8°', Colors.white),
+              _buildCard('SOG', '${_speedKnots.toStringAsFixed(1)} kn', Colors.greenAccent),
               const SizedBox(width: 8),
-              _buildCard('SOG', '6.2 kn', Colors.greenAccent),
+              _buildCard('ACCURACY', 'HIGH', Colors.cyanAccent),
             ],
           ),
           const SizedBox(height: 10),
 
-          // Interactive Dark Mode Map
+          // Interactive Map with Mobile GPS Position
           Expanded(
             child: ClipRRect(
               borderRadius: BorderRadius.circular(12),
               child: Stack(
                 children: [
                   FlutterMap(
-                    options: const MapOptions(
-                      initialCenter: vesselPosition,
-                      initialZoom: 13.5,
+                    mapController: _mapController,
+                    options: MapOptions(
+                      initialCenter: _currentPosition,
+                      initialZoom: 15.0,
                     ),
                     children: [
                       TileLayer(
                         urlTemplate: 'https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
                         userAgentPackageName: 'com.example.pilot_plug',
                       ),
-                      PolylineLayer(
-                        polylines: [
-                          Polyline(
-                            points: const [
-                              vesselPosition,
-                              LatLng(14.5800, 120.9600),
-                            ],
-                            strokeWidth: 3.0,
-                            color: Colors.cyanAccent,
-                          ),
-                        ],
-                      ),
                       MarkerLayer(
                         markers: [
                           Marker(
-                            point: vesselPosition,
+                            point: _currentPosition,
                             width: 50,
                             height: 50,
-                            child: const Icon(
-                              Icons.navigation,
-                              color: Colors.redAccent,
-                              size: 36,
-                            ),
-                          ),
-                          const Marker(
-                            point: LatLng(14.6100, 120.9700),
-                            width: 40,
-                            height: 40,
-                            child: Icon(
-                              Icons.directions_boat,
-                              color: Colors.greenAccent,
-                              size: 28,
+                            child: Transform.rotate(
+                              angle: (_heading * (3.141592653589793 / 180)),
+                              child: const Icon(
+                                Icons.navigation,
+                                color: Colors.redAccent,
+                                size: 36,
+                              ),
                             ),
                           ),
                         ],
@@ -214,11 +264,14 @@ class PilotageScreen extends StatelessWidget {
                         color: Colors.black87,
                         borderRadius: BorderRadius.circular(6),
                       ),
-                      child: const Column(
+                      child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('Developer: Renante Fullo', style: TextStyle(color: Colors.blueAccent, fontSize: 11, fontWeight: FontWeight.bold)),
-                          Text('14°35.97\'N 120°59.05\'E', style: TextStyle(color: Colors.white70, fontSize: 10)),
+                          const Text('Developer: Renante Fullo', style: TextStyle(color: Colors.blueAccent, fontSize: 11, fontWeight: FontWeight.bold)),
+                          Text(
+                            '${_currentPosition.latitude.toStringAsFixed(5)}°N, ${_currentPosition.longitude.toStringAsFixed(5)}°E',
+                            style: const TextStyle(color: Colors.white70, fontSize: 10),
+                          ),
                         ],
                       ),
                     ),
@@ -258,52 +311,7 @@ class BridgeWingScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const vesselPosition = LatLng(14.5995, 120.9842);
-
-    return Column(
-      children: [
-        Container(
-          padding: const EdgeInsets.all(12),
-          color: const Color(0xFF161B22),
-          child: const Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: [
-              Text('PORT: 0.52 NM', style: TextStyle(color: Colors.amberAccent, fontWeight: FontWeight.bold)),
-              Text('CENTER ALIGN', style: TextStyle(color: Colors.greenAccent, fontWeight: FontWeight.bold)),
-              Text('STBD: 0.48 NM', style: TextStyle(color: Colors.amberAccent, fontWeight: FontWeight.bold)),
-            ],
-          ),
-        ),
-        Expanded(
-          child: FlutterMap(
-            options: const MapOptions(
-              initialCenter: vesselPosition,
-              initialZoom: 15.0,
-            ),
-            children: [
-              TileLayer(
-                urlTemplate: 'https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
-                userAgentPackageName: 'com.example.pilot_plug',
-              ),
-              MarkerLayer(
-                markers: [
-                  Marker(
-                    point: vesselPosition,
-                    width: 60,
-                    height: 60,
-                    child: const Icon(
-                      Icons.navigation,
-                      color: Colors.blueAccent,
-                      size: 48,
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
+    return const Center(child: Text('Bridge Wing View (GPS Active)', style: TextStyle(color: Colors.white70)));
   }
 }
 
@@ -361,16 +369,7 @@ class TrainingScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.school, size: 64, color: Colors.blueAccent),
-          SizedBox(height: 12),
-          Text('Pilotage Simulation & Training', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-          SizedBox(height: 8),
-          Text('Developer: Renante Fullo', style: TextStyle(color: Colors.grey)),
-        ],
-      ),
+      child: Text('Training Mode', style: TextStyle(color: Colors.white70)),
     );
   }
 }
@@ -381,16 +380,7 @@ class TestingScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.build, size: 64, color: Colors.amberAccent),
-          SizedBox(height: 12),
-          Text('NMEA & Wi-Fi Data Stream Tester', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-          SizedBox(height: 8),
-          Text('Status: Connected to Pilot Plug Port', style: TextStyle(color: Colors.greenAccent)),
-        ],
-      ),
+      child: Text('NMEA & GPS Stream Tester', style: TextStyle(color: Colors.amberAccent)),
     );
   }
 }
@@ -401,16 +391,7 @@ class MaintenanceScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.settings, size: 64, color: Colors.grey),
-          SizedBox(height: 12),
-          Text('System Maintenance & Calibration', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-          SizedBox(height: 8),
-          Text('Pilot Plug App v1.0.0', style: TextStyle(color: Colors.white54)),
-        ],
-      ),
+      child: Text('System Maintenance', style: TextStyle(color: Colors.white54)),
     );
   }
 }
