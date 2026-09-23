@@ -174,7 +174,7 @@ class PilotageScreen extends StatelessWidget {
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                       decoration: BoxDecoration(
-                        color: Colors.black80,
+                        color: Colors.black87,
                         borderRadius: BorderRadius.circular(6),
                       ),
                       child: const Column(
