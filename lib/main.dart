@@ -7,7 +7,7 @@ import 'dart:async';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await FMTCObjectProvider.settings.init();
+  await FMTCStore('mapStore').manage.create();
   runApp(const PilotPlugApp());
 }
 
@@ -250,7 +250,7 @@ class _PilotageScreenState extends State<PilotageScreen> {
                       TileLayer(
                         urlTemplate: 'https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
                         userAgentPackageName: 'com.example.pilot_plug',
-                        tileProvider: FMTC.instance('mapStore').getTileProvider(),
+                        tileProvider: FMTCStore('mapStore').getTileProvider(),
                       ),
                       MarkerLayer(
                         markers: [
