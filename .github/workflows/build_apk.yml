@@ -28,7 +28,7 @@ jobs:
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.19.6'
+          flutter-version: '3.22.3'
           channel: 'stable'
 
       - name: Clean and Re-generate Android Project
@@ -36,24 +36,15 @@ jobs:
           rm -rf android
           flutter create . --platforms=android --project-name=pilot_plug
 
-      - name: Inject Global Android SDK Settings
+      - name: Configure Android SDK Versions
         run: |
-          # Set Android SDK versions in build.gradle
+          # Configure compileSdk and minSdk in app/build.gradle
+          sed -i 's/compileSdk = .*/compileSdk = 35/' android/app/build.gradle || true
           sed -i 's/compileSdkVersion .*/compileSdkVersion 35/' android/app/build.gradle || true
+          sed -i 's/targetSdk = .*/targetSdk = 35/' android/app/build.gradle || true
           sed -i 's/targetSdkVersion .*/targetSdkVersion 35/' android/app/build.gradle || true
+          sed -i 's/minSdk = .*/minSdk = 21/' android/app/build.gradle || true
           sed -i 's/minSdkVersion .*/minSdkVersion 21/' android/app/build.gradle || true
-
-          # Force ALL plugins (including geolocator) to use SDK 35
-          echo "" >> android/build.gradle
-          echo "subprojects { project ->" >> android/build.gradle
-          echo "    project.plugins.whenPluginAdded { plugin ->" >> android/build.gradle
-          echo "        if (plugin.class.name.startsWith('com.android.build.gradle.')) {" >> android/build.gradle
-          echo "            project.android {" >> android/build.gradle
-          echo "                compileSdkVersion 35" >> android/build.gradle
-          echo "            }" >> android/build.gradle
-          echo "        }" >> android/build.gradle
-          echo "    }" >> android/build.gradle
-          echo "}" >> android/build.gradle
 
       - name: Add Permissions to AndroidManifest
         run: |
