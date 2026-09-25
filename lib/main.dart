@@ -91,14 +91,19 @@ class _PilotPlugDashboardState extends State<PilotPlugDashboard> {
   String _mbtilesPath = '';
   GpsStatus _gpsStatus = GpsStatus.disconnected;
 
-  // MapController para maitapat/ma-center ang mapa sa totoong GPS location
+  // MapController
   final MapController _mapController = MapController();
 
-  // Default initial coordinates (mababago agad sa totoong GPS pwesto sa China)
+  // Location Telemetry
   LatLng _currentLocation = const LatLng(14.6000, 120.9833);
   double _cog = 0.0;
   double _sog = 0.0;
   String _accuracy = 'OFF';
+
+  // NMEA Share Settings
+  bool _isNmeaSharingEnabled = false;
+  String _nmeaProtocol = 'UDP';
+  int _nmeaPort = 10110;
 
   StreamSubscription<Position>? _positionStreamSubscription;
 
@@ -109,7 +114,7 @@ class _PilotPlugDashboardState extends State<PilotPlugDashboard> {
     super.dispose();
   }
 
-  // LOGIC PARA SA TOTOONG GPS CONNECTION
+  // TOGGLE GPS LOGIC
   Future<void> _toggleGps() async {
     if (_gpsStatus == GpsStatus.connected || _gpsStatus == GpsStatus.connecting) {
       _disconnectGps();
@@ -121,7 +126,6 @@ class _PilotPlugDashboardState extends State<PilotPlugDashboard> {
     });
 
     try {
-      // 1. Tignan kung nakasindi ang Location Service ng cellphone
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
         if (mounted) {
@@ -138,7 +142,6 @@ class _PilotPlugDashboardState extends State<PilotPlugDashboard> {
         return;
       }
 
-      // 2. Humingi ng Location Permission
       LocationPermission permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
@@ -173,14 +176,12 @@ class _PilotPlugDashboardState extends State<PilotPlugDashboard> {
         return;
       }
 
-      // 3. Kuhanin agad ang kasalukuyang pwesto (Current Position)
       Position initialPosition = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
       );
 
       _updatePosition(initialPosition);
 
-      // 4. Makinig sa patuloy na pagbabago ng GPS position (Live Stream)
       _positionStreamSubscription = Geolocator.getPositionStream(
         locationSettings: const LocationSettings(
           accuracy: LocationAccuracy.high,
@@ -229,7 +230,6 @@ class _PilotPlugDashboardState extends State<PilotPlugDashboard> {
       _accuracy = '${position.accuracy.toStringAsFixed(1)}m';
     });
 
-    // I-center ang mapa sa TOTOONG GPS Location (China / kinalalagyan ng device)
     _mapController.move(newLocation, _mapController.camera.zoom);
   }
 
@@ -243,7 +243,7 @@ class _PilotPlugDashboardState extends State<PilotPlugDashboard> {
     });
   }
 
-  // IMPORT MBTILES LOGIC
+  // IMPORT MBTILES
   Future<void> _importMBTiles() async {
     try {
       FilePickerResult? result = await FilePicker.platform.pickFiles(
@@ -270,7 +270,7 @@ class _PilotPlugDashboardState extends State<PilotPlugDashboard> {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
-                content: Text('Maling file! Siguraduhing .mbtiles file ang pipiliin.'),
+                content: Text('Kailangan ng .mbtiles file format! (I-convert ang CM93 sa MBTiles)'),
                 backgroundColor: Colors.orange,
               ),
             );
@@ -289,7 +289,6 @@ class _PilotPlugDashboardState extends State<PilotPlugDashboard> {
     }
   }
 
-  // INFO DIALOG
   void _showInfoDialog() {
     showDialog(
       context: context,
@@ -387,7 +386,7 @@ class _PilotPlugDashboardState extends State<PilotPlugDashboard> {
     );
   }
 
-  // TAB 0: PILOTAGE SCREEN
+  // TAB 0: PILOTAGE
   Widget _buildPilotageScreen(Color cardColor) {
     Color statusColor;
     String statusText;
@@ -416,7 +415,6 @@ class _PilotPlugDashboardState extends State<PilotPlugDashboard> {
       padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
       child: Column(
         children: [
-          // GPS Status Bar
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
             decoration: BoxDecoration(
@@ -467,7 +465,6 @@ class _PilotPlugDashboardState extends State<PilotPlugDashboard> {
           ),
           const SizedBox(height: 10),
 
-          // Telemetry Cards
           Row(
             children: [
               _buildTelemetryCard(
@@ -494,7 +491,6 @@ class _PilotPlugDashboardState extends State<PilotPlugDashboard> {
           ),
           const SizedBox(height: 10),
 
-          // Mode & MBTiles Bar
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             decoration: BoxDecoration(
@@ -535,7 +531,6 @@ class _PilotPlugDashboardState extends State<PilotPlugDashboard> {
           ),
           const SizedBox(height: 10),
 
-          // Map Display Area
           Expanded(
             child: ClipRRect(
               borderRadius: BorderRadius.circular(12),
@@ -576,7 +571,7 @@ class _PilotPlugDashboardState extends State<PilotPlugDashboard> {
     );
   }
 
-  // TAB 1: DOCKING SCREEN
+  // TAB 1: DOCKING
   Widget _buildDockingScreen(Color cardColor) {
     return Padding(
       padding: const EdgeInsets.all(16.0),
@@ -633,25 +628,104 @@ class _PilotPlugDashboardState extends State<PilotPlugDashboard> {
     );
   }
 
-  // TAB 2: NMEA SHARE SCREEN
+  // TAB 2: NMEA SHARE (MAY MGA BUTTON AT SWITCHES ULIT)
   Widget _buildNmeaScreen(Color cardColor) {
     return Padding(
       padding: const EdgeInsets.all(16.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'NMEA Stream & Share',
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-              color: widget.isDarkMode ? Colors.white : Colors.black87,
+      child: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'NMEA Stream & Share',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+                color: widget.isDarkMode ? Colors.white : Colors.black87,
+              ),
             ),
-          ),
-          const SizedBox(height: 16),
-          Expanded(
-            child: Container(
+            const SizedBox(height: 16),
+
+            // Control Settings Card
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: cardColor,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Column(
+                children: [
+                  // Broadcast Switch
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Broadcast NMEA Data',
+                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                          ),
+                          Text(
+                            'Share GPS to ECDIS / OpenCPN',
+                            style: TextStyle(fontSize: 12, color: Colors.grey),
+                          ),
+                        ],
+                      ),
+                      Switch(
+                        value: _isNmeaSharingEnabled,
+                        activeColor: const Color(0xFF29B6F6),
+                        onChanged: (value) {
+                          setState(() {
+                            _isNmeaSharingEnabled = value;
+                          });
+                        },
+                      ),
+                    ],
+                  ),
+                  const Divider(height: 24),
+
+                  // Protocol Selector
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('Protocol:'),
+                      SegmentedButton<String>(
+                        segments: const [
+                          ButtonSegment(value: 'UDP', label: Text('UDP')),
+                          ButtonSegment(value: 'TCP', label: Text('TCP')),
+                        ],
+                        selected: {_nmeaProtocol},
+                        onSelectionChanged: (Set<String> newSelection) {
+                          setState(() {
+                            _nmeaProtocol = newSelection.first;
+                          });
+                        },
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+
+                  // Port Info
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('Server Port:'),
+                      Text(
+                        '$_nmeaPort',
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // Live NMEA Terminal Window
+            Container(
               width: double.infinity,
+              height: 260,
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
                 color: cardColor,
@@ -663,18 +737,21 @@ class _PilotPlugDashboardState extends State<PilotPlugDashboard> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text('UDP/TCP Broadcast:', style: TextStyle(fontWeight: FontWeight.bold)),
+                      const Text('Live NMEA Log:', style: TextStyle(fontWeight: FontWeight.bold)),
                       Text(
-                        _gpsStatus == GpsStatus.connected ? 'STREAMING' : 'IDLE',
+                        _isNmeaSharingEnabled && _gpsStatus == GpsStatus.connected
+                            ? 'STREAMING ($_nmeaProtocol:$_nmeaPort)'
+                            : 'OFFLINE',
                         style: TextStyle(
-                          color: _gpsStatus == GpsStatus.connected ? Colors.green : Colors.amber,
+                          color: _isNmeaSharingEnabled && _gpsStatus == GpsStatus.connected
+                              ? Colors.green
+                              : Colors.red,
                           fontWeight: FontWeight.bold,
+                          fontSize: 12,
                         ),
                       ),
                     ],
                   ),
-                  const Divider(height: 30),
-                  const Text('Live NMEA Log:'),
                   const SizedBox(height: 10),
                   Expanded(
                     child: Container(
@@ -687,10 +764,10 @@ class _PilotPlugDashboardState extends State<PilotPlugDashboard> {
                       child: SingleChildScrollView(
                         child: Text(
                           _gpsStatus == GpsStatus.connected
-                              ? '\$GPRMC,123519,A,${_currentLocation.latitude.toStringAsFixed(4)},N,${_currentLocation.longitude.toStringAsFixed(4)},E,${_sog.toStringAsFixed(1)},${_cog.toStringAsFixed(1)},230326,003.1,W*6A\n'
+                              ? '\$GPRMC,123519,A,${_currentLocation.latitude.toStringAsFixed(4)},N,${_currentLocation.longitude.toStringAsFixed(4)},E,${_sog.toStringAsFixed(1)},${_cog.toStringAsFixed(1)},250926,003.1,W*6A\n'
                                 '\$GPGGA,123519,${_currentLocation.latitude.toStringAsFixed(4)},N,${_currentLocation.longitude.toStringAsFixed(4)},E,1,08,0.9,545.4,M,46.9,M,,*47\n'
                                 '\$GPVTG,${_cog.toStringAsFixed(1)},T,,M,${_sog.toStringAsFixed(1)},N,${(_sog * 1.852).toStringAsFixed(1)},K*48'
-                              : 'Pindutin ang "CONNECT GPS" sa Pilotage tab para mag-stream ng NMEA sentences...',
+                              : 'I-enable ang GPS at Switch para mag-stream ng NMEA...',
                           style: const TextStyle(
                             fontFamily: 'monospace',
                             color: Colors.greenAccent,
@@ -703,8 +780,8 @@ class _PilotPlugDashboardState extends State<PilotPlugDashboard> {
                 ],
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
