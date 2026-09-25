@@ -1,4 +1,4 @@
-name: Build Android APK
+name: Build Release APK
 
 on:
   push:
@@ -15,14 +15,10 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Fix Folder Case
-        run: |
-          if [ -d "Lib" ]; then mv Lib lib; fi
-
       - name: Set up Java JDK
         uses: actions/setup-java@v4
         with:
-          distribution: 'temurin'
+          distribution: 'zulu'
           java-version: '17'
 
       - name: Set up Flutter
@@ -36,19 +32,20 @@ jobs:
           rm -rf android
           flutter create . --platforms=android --project-name=pilot_plug
 
-      - name: Force Update Geolocator & Purge Lockfile
+      - name: Force Geolocator Android to 4.6.1
         run: |
+          python3 -c "
+          with open('pubspec.yaml', 'r') as f:
+              content = f.read()
+          if 'dependency_overrides:' in content:
+              content = content.replace('dependency_overrides:', 'dependency_overrides:\n  geolocator_android: 4.6.1')
+          else:
+              content += '\ndependency_overrides:\n  geolocator_android: 4.6.1\n'
+          with open('pubspec.yaml', 'w') as f:
+              f.write(content)
+          "
           rm -f pubspec.lock
-          flutter pub add geolocator:^13.0.1
-          flutter pub upgrade
-
-      - name: Configure Android SDK Versions
-        run: |
-          # Force SDK 35 on app level
-          sed -i 's/compileSdk = .*/compileSdk = 35/' android/app/build.gradle || true
-          sed -i 's/compileSdkVersion .*/compileSdkVersion 35/' android/app/build.gradle || true
-          sed -i 's/minSdk = .*/minSdk = 21/' android/app/build.gradle || true
-          sed -i 's/minSdkVersion .*/minSdkVersion 21/' android/app/build.gradle || true
+          flutter pub get
 
       - name: Add Permissions to AndroidManifest
         run: |
@@ -60,5 +57,5 @@ jobs:
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: pilot-plug-app-release
+          name: app-release
           path: build/app/outputs/flutter-apk/app-release.apk
