@@ -36,22 +36,16 @@ jobs:
           rm -rf android
           flutter create . --platforms=android --project-name=pilot_plug
 
-      - name: Configure Android SDK and Kotlin Versions
+      - name: Update Android Gradle Config Safely
         run: |
-          # Set compileSdk 35 and minSdk 21 in build.gradle
+          # Set compileSdk and minSdk in app/build.gradle
           sed -i 's/compileSdk = .*/compileSdk = 35/' android/app/build.gradle || true
           sed -i 's/compileSdkVersion .*/compileSdkVersion 35/' android/app/build.gradle || true
-          sed -i 's/targetSdk = .*/targetSdk = 35/' android/app/build.gradle || true
-          sed -i 's/targetSdkVersion .*/targetSdkVersion 35/' android/app/build.gradle || true
           sed -i 's/minSdk = .*/minSdk = 21/' android/app/build.gradle || true
           sed -i 's/minSdkVersion .*/minSdkVersion 21/' android/app/build.gradle || true
 
-          # Force subproject plugins to compile with SDK 35
-          echo "subprojects { afterEvaluate { project -> if (project.hasProperty('android')) { project.android { compileSdkVersion 35 } } } }" >> android/build.gradle
-
-          # Update Kotlin version to 1.9.22 to fix metadata mismatch
-          sed -i 's/ext.kotlin_version = .*/ext.kotlin_version = "1.9.22"/' android/build.gradle || true
-          sed -i 's/id "org.jetbrains.kotlin.android" version .*/id "org.jetbrains.kotlin.android" version "1.9.22" apply false/' android/settings.gradle || true
+          # Force subproject compileSdkVersion safely without afterEvaluate
+          echo 'subprojects { project.evaluationDependsOn(":app") }' >> android/build.gradle
 
       - name: Add Permissions to AndroidManifest
         run: |
