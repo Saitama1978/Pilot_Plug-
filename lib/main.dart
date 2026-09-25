@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
+import 'package:flutter_map_mbtiles/flutter_map_mbtiles.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:mbtiles/mbtiles.dart';
 import 'dart:async';
 import 'dart:io';
 
@@ -155,7 +158,7 @@ class _MainDashboardState extends State<MainDashboard> {
                 children: const [
                   SizedBox(height: 10),
                   Text('Developer: Renante Fullo', style: TextStyle(fontWeight: FontWeight.bold)),
-                  Text('Live AIS, NMEA & GPS Data Viewer'),
+                  Text('Live AIS, NMEA & Offline Chart Viewer'),
                 ],
               );
             },
@@ -196,6 +199,59 @@ class _PilotageScreenState extends State<PilotageScreen> {
   bool _isConnecting = false;
   StreamSubscription<Position>? _positionStream;
   final MapController _mapController = MapController();
+
+  // MBTiles Offline Map Properties
+  MbTilesTileProvider? _mbTilesProvider;
+  String? _loadedChartName;
+
+  Future<void> _pickAndLoadMBTiles() async {
+    try {
+      FilePickerResult? result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['mbtiles'],
+      );
+
+      if (result != null && result.files.single.path != null) {
+        String filePath = result.files.single.path!;
+        final mbTiles = MbTiles(mbtilesPath: filePath);
+
+        setState(() {
+          _mbTilesProvider?.dispose();
+          _mbTilesProvider = MbTilesTileProvider(mbtiles: mbTiles);
+          _loadedChartName = result.files.single.name;
+        });
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Matagumpay na na-load ang offline chart: $_loadedChartName'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error sa pag-load ng MBTiles: $e'),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      }
+    }
+  }
+
+  void _clearLoadedChart() {
+    setState(() {
+      _mbTilesProvider?.dispose();
+      _mbTilesProvider = null;
+      _loadedChartName = null;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Bumalik sa Online OpenStreetMap')),
+    );
+  }
 
   Future<void> _toggleGPSConnection() async {
     if (_isConnected) {
@@ -284,6 +340,7 @@ class _PilotageScreenState extends State<PilotageScreen> {
   @override
   void dispose() {
     _positionStream?.cancel();
+    _mbTilesProvider?.dispose();
     super.dispose();
   }
 
@@ -357,6 +414,52 @@ class _PilotageScreenState extends State<PilotageScreen> {
             ],
           ),
           const SizedBox(height: 10),
+          // MBTiles Load / Import Bar
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: cardBgColor,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.blueAccent.withOpacity(0.2)),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.map_outlined, color: Colors.blueAccent, size: 20),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    _loadedChartName != null
+                        ? 'Loaded: $_loadedChartName'
+                        : 'Mode: Online OSM (Import .mbtiles for Offline)',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: _loadedChartName != null ? Colors.greenAccent : Colors.grey,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                if (_loadedChartName != null)
+                  IconButton(
+                    icon: const Icon(Icons.close, color: Colors.redAccent, size: 18),
+                    onPressed: _clearLoadedChart,
+                    tooltip: 'Remove Offline Chart',
+                  ),
+                ElevatedButton.icon(
+                  onPressed: _pickAndLoadMBTiles,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blueAccent.withOpacity(0.2),
+                    foregroundColor: Colors.blueAccent,
+                    elevation: 0,
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  ),
+                  icon: const Icon(Icons.folder_open, size: 16),
+                  label: const Text('Import MBTiles', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 10),
           Expanded(
             child: ClipRRect(
               borderRadius: BorderRadius.circular(12),
@@ -372,10 +475,12 @@ class _PilotageScreenState extends State<PilotageScreen> {
                     ),
                     children: [
                       TileLayer(
-                        urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                        tileProvider: _mbTilesProvider ?? NetworkTileProvider(),
+                        urlTemplate: _mbTilesProvider == null
+                            ? 'https://tile.openstreetmap.org/{z}/{x}/{y}.png'
+                            : null,
                         userAgentPackageName: 'com.pilotplug.app',
-                        tileProvider: NetworkTileProvider(),
-                        tileBuilder: widget.isDarkMode
+                        tileBuilder: (widget.isDarkMode && _mbTilesProvider == null)
                             ? (context, tileWidget, tile) {
                                 return ColorFiltered(
                                   colorFilter: const ColorFilter.matrix(<double>[
