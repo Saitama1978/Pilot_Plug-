@@ -36,13 +36,13 @@ jobs:
           rm -rf android
           flutter create . --platforms=android --project-name=pilot_plug
 
-      - name: Configure Android SDK Versions
+      - name: Configure Android SDK Versions (Target SDK 34)
         run: |
-          # Configure compileSdk and minSdk in app/build.gradle
-          sed -i 's/compileSdk = .*/compileSdk = 35/' android/app/build.gradle || true
-          sed -i 's/compileSdkVersion .*/compileSdkVersion 35/' android/app/build.gradle || true
-          sed -i 's/targetSdk = .*/targetSdk = 35/' android/app/build.gradle || true
-          sed -i 's/targetSdkVersion .*/targetSdkVersion 35/' android/app/build.gradle || true
+          # Set compileSdk and targetSdk to 34 (Android 14) to match Build-Tools
+          sed -i 's/compileSdk = .*/compileSdk = 34/' android/app/build.gradle || true
+          sed -i 's/compileSdkVersion .*/compileSdkVersion 34/' android/app/build.gradle || true
+          sed -i 's/targetSdk = .*/targetSdk = 34/' android/app/build.gradle || true
+          sed -i 's/targetSdkVersion .*/targetSdkVersion 34/' android/app/build.gradle || true
           sed -i 's/minSdk = .*/minSdk = 21/' android/app/build.gradle || true
           sed -i 's/minSdkVersion .*/minSdkVersion 21/' android/app/build.gradle || true
 
