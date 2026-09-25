@@ -43,7 +43,11 @@ jobs:
 
       - name: Generate App Launcher Icons
         run: |
-          dart run flutter_launcher_icons || true
+          if [ -f "icon.png" ]; then
+            dart run flutter_launcher_icons
+          else
+            echo "WARNING: Walang icon.png na nahanap sa root directory!"
+          fi
 
       - name: Add Permissions to AndroidManifest
         run: |
