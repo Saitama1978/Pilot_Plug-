@@ -248,8 +248,8 @@ class _PilotageScreenState extends State<PilotageScreen> {
                     ),
                     children: [
                       TileLayer(
-                        urlTemplate: 'https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
-                        userAgentPackageName: 'com.example.pilot_plug',
+                        urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                        userAgentPackageName: 'com.pilotplug.app',
                       ),
                       MarkerLayer(
                         markers: [
