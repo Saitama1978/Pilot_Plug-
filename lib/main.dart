@@ -290,9 +290,6 @@ class _PilotageScreenState extends State<PilotageScreen> {
   @override
   Widget build(BuildContext context) {
     final cardBgColor = Theme.of(context).cardColor;
-    final mapTileUrl = widget.isDarkMode
-        ? 'https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png'
-        : 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
 
     return Padding(
       padding: const EdgeInsets.all(12.0),
@@ -373,8 +370,21 @@ class _PilotageScreenState extends State<PilotageScreen> {
                     ),
                     children: [
                       TileLayer(
-                        urlTemplate: mapTileUrl,
+                        urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                         userAgentPackageName: 'com.pilotplug.app',
+                        tileBuilder: widget.isDarkMode
+                            ? (context, tileWidget, tile) {
+                                return ColorFiltered(
+                                  colorFilter: const ColorFilter.matrix(<double>[
+                                    -0.2126, -0.7152, -0.0722, 0, 255,
+                                    -0.2126, -0.7152, -0.0722, 0, 255,
+                                    -0.2126, -0.7152, -0.0722, 0, 255,
+                                    0,       0,       0,       1, 0,
+                                  ]),
+                                  child: tileWidget,
+                                );
+                              }
+                            : null,
                       ),
                       MarkerLayer(
                         markers: [
