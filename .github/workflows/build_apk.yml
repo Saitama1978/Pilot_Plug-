@@ -15,6 +15,10 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
+      - name: Fix Folder Case
+        run: |
+          if [ -d "Lib" ]; then mv Lib lib; fi
+
       - name: Set up Java JDK
         uses: actions/setup-java@v4
         with:
@@ -24,11 +28,18 @@ jobs:
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.19.6'
+          flutter-version: '3.19.x'
           channel: 'stable'
 
-      - name: Re-generate Modern Android Project Files
+      - name: Clean Old Android Files
+        run: rm -rf android
+
+      - name: Create Fresh Android V2 Project
         run: flutter create . --platforms=android --project-name=pilot_plug
+
+      - name: Add Internet Permission to AndroidManifest
+        run: |
+          sed -i '/<application/i \    <uses-permission android:name="android.permission.INTERNET"/>\n    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>\n    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>' android/app/src/main/AndroidManifest.xml
 
       - name: Install Dependencies
         run: flutter pub get
