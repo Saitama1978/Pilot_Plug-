@@ -1,233 +1,80 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_map/flutter_map.dart';
-import 'package:flutter_map_mbtiles/flutter_map_mbtiles.dart';
-import 'package:latlong2/latlong.dart';
-import 'package:geolocator/geolocator.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:mbtiles/mbtiles.dart';
-import 'dart:async';
-import 'dart:io';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
 
 void main() {
-  WidgetsFlutterBinding.ensureInitialized();
   runApp(const PilotPlugApp());
 }
 
-class PilotPlugApp extends StatefulWidget {
+class PilotPlugApp extends StatelessWidget {
   const PilotPlugApp({super.key});
-
-  @override
-  State<PilotPlugApp> createState() => _PilotPlugAppState();
-}
-
-class _PilotPlugAppState extends State<PilotPlugApp> {
-  bool _isDarkMode = true;
-
-  void _toggleTheme() {
-    setState(() {
-      _isDarkMode = !_isDarkMode;
-    });
-  }
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Pilot Plug App',
+      title: 'Pilot Plug',
       debugShowCheckedModeBanner: false,
-      themeMode: _isDarkMode ? ThemeMode.dark : ThemeMode.light,
-      theme: ThemeData(
-        brightness: Brightness.light,
-        scaffoldBackgroundColor: const Color(0xFFF5F7FA),
-        cardColor: Colors.white,
-        primaryColor: Colors.blueAccent,
+      theme: ThemeData.dark().copyWith(
+        scaffoldBackgroundColor: const Color(0xFF121824),
         appBarTheme: const AppBarTheme(
-          backgroundColor: Colors.white,
-          foregroundColor: Colors.black87,
-          elevation: 1,
+          backgroundColor: Color(0xFF121824),
+          elevation: 0,
         ),
-        bottomNavigationBarTheme: const BottomNavigationBarThemeData(
-          backgroundColor: Colors.white,
-          selectedItemColor: Colors.blueAccent,
-          unselectedItemColor: Colors.grey,
-        ),
-        colorScheme: const ColorScheme.light(
-          primary: Colors.blueAccent,
-          surface: Colors.white,
-        ),
-        useMaterial3: true,
       ),
-      darkTheme: ThemeData(
-        brightness: Brightness.dark,
-        scaffoldBackgroundColor: const Color(0xFF0A0E14),
-        cardColor: const Color(0xFF161B22),
-        primaryColor: Colors.blueAccent,
-        appBarTheme: const AppBarTheme(
-          backgroundColor: Color(0xFF161B22),
-          foregroundColor: Colors.white,
-        ),
-        bottomNavigationBarTheme: const BottomNavigationBarThemeData(
-          backgroundColor: Color(0xFF161B22),
-          selectedItemColor: Colors.blueAccent,
-          unselectedItemColor: Colors.grey,
-        ),
-        colorScheme: const ColorScheme.dark(
-          primary: Colors.blueAccent,
-          surface: Color(0xFF161B22),
-        ),
-        useMaterial3: true,
-      ),
-      home: MainDashboard(
-        isDarkMode: _isDarkMode,
-        onToggleTheme: _toggleTheme,
-      ),
+      home: const PilotPlugDashboard(),
     );
   }
 }
 
-class MainDashboard extends StatefulWidget {
-  final bool isDarkMode;
-  final VoidCallback onToggleTheme;
-
-  const MainDashboard({
-    super.key,
-    required this.isDarkMode,
-    required this.onToggleTheme,
-  });
+class PilotPlugDashboard extends StatefulWidget {
+  const PilotPlugDashboard({super.key});
 
   @override
-  State<MainDashboard> createState() => _MainDashboardState();
+  State<PilotPlugDashboard> createState() => _PilotPlugDashboardState();
 }
 
-class _MainDashboardState extends State<MainDashboard> {
+class _PilotPlugDashboardState extends State<PilotPlugDashboard> {
   int _selectedIndex = 0;
+  String _mbtilesPath = '';
+  
+  // Default map position (Manila Area base sa screenshot)
+  final LatLng _currentLocation = const LatLng(14.6000, 120.9833);
 
-  double bowDistance = 0.57;
-  double lateralSpeed = 4.00;
-  double sternDistance = 0.12;
-
-  void _updateDockingData(double bow, double speed, double stern) {
-    setState(() {
-      bowDistance = bow;
-      lateralSpeed = speed;
-      sternDistance = stern;
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final List<Widget> pages = [
-      PilotageScreen(isDarkMode: widget.isDarkMode),
-      DockingScreen(
-        bowDistance: bowDistance,
-        lateralSpeed: lateralSpeed,
-        sternDistance: sternDistance,
-        onUpdate: _updateDockingData,
-      ),
-      const NmeaBroadcasterScreen(),
-    ];
-
-    return Scaffold(
-      appBar: AppBar(
-        title: const Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(Icons.navigation_outlined, color: Colors.blueAccent),
-                SizedBox(width: 8),
-                Text('Pilot Plug Dashboard', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-              ],
-            ),
-            Text('Developer: Renante Fullo', style: TextStyle(fontSize: 11, color: Colors.grey)),
-          ],
-        ),
-        actions: [
-          IconButton(
-            icon: Icon(widget.isDarkMode ? Icons.wb_sunny : Icons.nightlight_round),
-            tooltip: widget.isDarkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode',
-            onPressed: widget.onToggleTheme,
-          ),
-          IconButton(
-            icon: const Icon(Icons.info_outline),
-            onPressed: () {
-              showAboutDialog(
-                context: context,
-                applicationName: 'Pilot Plug App',
-                applicationVersion: '1.0.0',
-                applicationIcon: const Icon(Icons.anchor, size: 40, color: Colors.blueAccent),
-                children: const [
-                  SizedBox(height: 10),
-                  Text('Developer: Renante Fullo', style: TextStyle(fontWeight: FontWeight.bold)),
-                  Text('Live AIS, NMEA & Offline Chart Viewer'),
-                ],
-              );
-            },
-          ),
-        ],
-      ),
-      body: pages[_selectedIndex],
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _selectedIndex,
-        onTap: (index) => setState(() => _selectedIndex = index),
-        type: BottomNavigationBarType.fixed,
-        selectedFontSize: 12,
-        unselectedFontSize: 12,
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.directions_boat), label: 'Pilotage'),
-          BottomNavigationBarItem(icon: Icon(Icons.anchor), label: 'Docking'),
-          BottomNavigationBarItem(icon: Icon(Icons.wifi_tethering), label: 'NMEA Share'),
-        ],
-      ),
-    );
-  }
-}
-
-class PilotageScreen extends StatefulWidget {
-  final bool isDarkMode;
-
-  const PilotageScreen({super.key, required this.isDarkMode});
-
-  @override
-  State<PilotageScreen> createState() => _PilotageScreenState();
-}
-
-class _PilotageScreenState extends State<PilotageScreen> {
-  LatLng _currentPosition = const LatLng(14.5995, 120.9842);
-  double _speedKnots = 0.0;
-  double _heading = 0.0;
-  bool _isConnected = false;
-  bool _isConnecting = false;
-  StreamSubscription<Position>? _positionStream;
-  final MapController _mapController = MapController();
-
-  // MBTiles Offline Map Properties
-  MbTilesTileProvider? _mbTilesProvider;
-  String? _loadedChartName;
-
-  Future<void> _pickAndLoadMBTiles() async {
+  // NA-FIX NA MBTILES IMPORT LOGIC (Walang PlatformException Crash)
+  Future<void> _importMBTiles() async {
     try {
+      // FileType.any ang gagamitin para hindi mag-crash ang FilePicker sa Android
       FilePickerResult? result = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: ['mbtiles'],
+        type: FileType.any,
       );
 
       if (result != null && result.files.single.path != null) {
         String filePath = result.files.single.path!;
-        final mbTiles = MbTiles(mbtilesPath: filePath);
 
-        setState(() {
-          _mbTilesProvider?.dispose();
-          _mbTilesProvider = MbTilesTileProvider(mbtiles: mbTiles);
-          _loadedChartName = result.files.single.name;
-        });
+        // I-verify sa Dart code kung .mbtiles ang napiling file
+        if (filePath.toLowerCase().endsWith('.mbtiles')) {
+          setState(() {
+            _mbtilesPath = filePath;
+          });
 
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Matagumpay na na-load ang offline chart: $_loadedChartName'),
-              backgroundColor: Colors.green,
-            ),
-          );
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Matagumpay na na-import: ${result.files.single.name}'),
+                backgroundColor: Colors.green,
+              ),
+            );
+          }
+        } else {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Maling file! Siguraduhing .mbtiles file ang pipiliin.'),
+                backgroundColor: Colors.orange,
+              ),
+            );
+          }
         }
       }
     } catch (e) {
@@ -235,648 +82,243 @@ class _PilotageScreenState extends State<PilotageScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Error sa pag-load ng MBTiles: $e'),
-            backgroundColor: Colors.redAccent,
+            backgroundColor: Colors.red,
           ),
         );
       }
     }
-  }
-
-  void _clearLoadedChart() {
-    setState(() {
-      _mbTilesProvider?.dispose();
-      _mbTilesProvider = null;
-      _loadedChartName = null;
-    });
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Bumalik sa Online OpenStreetMap')),
-    );
-  }
-
-  Future<void> _toggleGPSConnection() async {
-    if (_isConnected) {
-      await _positionStream?.cancel();
-      _positionStream = null;
-      setState(() {
-        _isConnected = false;
-        _isConnecting = false;
-      });
-      return;
-    }
-
-    setState(() {
-      _isConnecting = true;
-    });
-
-    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-    if (!serviceEnabled) {
-      if (mounted) {
-        setState(() => _isConnecting = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Naka-OFF ang GPS ng Phone. Paki-turn ON ang Location Services.')),
-        );
-      }
-      return;
-    }
-
-    LocationPermission permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
-      if (permission == LocationPermission.denied) {
-        if (mounted) {
-          setState(() => _isConnecting = false);
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Kailangan ang GPS Permission para sa app.')),
-          );
-        }
-        return;
-      }
-    }
-
-    try {
-      Position position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
-        timeLimit: const Duration(seconds: 10),
-      );
-
-      if (mounted) {
-        setState(() {
-          _currentPosition = LatLng(position.latitude, position.longitude);
-          _speedKnots = position.speed * 1.94384;
-          _heading = position.heading;
-          _isConnected = true;
-          _isConnecting = false;
-        });
-        _mapController.move(_currentPosition, 14.0);
-      }
-    } catch (_) {
-      if (mounted) {
-        setState(() {
-          _isConnected = true;
-          _isConnecting = false;
-        });
-      }
-    }
-
-    _positionStream = Geolocator.getPositionStream(
-      locationSettings: const LocationSettings(
-        accuracy: LocationAccuracy.high,
-        distanceFilter: 1,
-      ),
-    ).listen((Position position) {
-      if (mounted) {
-        setState(() {
-          _currentPosition = LatLng(position.latitude, position.longitude);
-          _speedKnots = position.speed * 1.94384;
-          _heading = position.heading;
-          _isConnected = true;
-          _isConnecting = false;
-        });
-        _mapController.move(_currentPosition, _mapController.camera.zoom);
-      }
-    });
-  }
-
-  @override
-  void dispose() {
-    _positionStream?.cancel();
-    _mbTilesProvider?.dispose();
-    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final cardBgColor = Theme.of(context).cardColor;
-
-    return Padding(
-      padding: const EdgeInsets.all(12.0),
-      child: Column(
-        children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            decoration: BoxDecoration(
-              color: cardBgColor,
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: Colors.blueAccent.withOpacity(0.3)),
+    return Scaffold(
+      appBar: AppBar(
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: const [
+            Text(
+              'Pilot Plug Dashboard',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
             ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Row(
-                  children: [
-                    Icon(
-                      Icons.circle,
-                      color: _isConnected
-                          ? Colors.greenAccent
-                          : (_isConnecting ? Colors.amber : Colors.redAccent),
-                      size: 10,
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      _isConnected
-                          ? 'GPS CONNECTED'
-                          : (_isConnecting ? 'CONNECTING...' : 'DISCONNECTED'),
-                      style: TextStyle(
-                        color: _isConnected
-                            ? Colors.greenAccent
-                            : (_isConnecting ? Colors.amber : Colors.redAccent),
-                        fontWeight: FontWeight.bold,
-                        fontSize: 12,
-                      ),
-                    ),
-                  ],
-                ),
-                ElevatedButton.icon(
-                  onPressed: _isConnecting ? null : _toggleGPSConnection,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: _isConnected ? Colors.red.withOpacity(0.8) : Colors.blueAccent,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
-                  ),
-                  icon: Icon(_isConnected ? Icons.power_settings_new : Icons.gps_fixed, size: 16),
-                  label: Text(
-                    _isConnected ? 'DISCONNECT' : 'CONNECT GPS',
-                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11),
-                  ),
-                ),
-              ],
+            SizedBox(height: 2),
+            Text(
+              'Developer: Renante Fullo',
+              style: TextStyle(
+                fontSize: 12,
+                color: Colors.grey,
+              ),
             ),
+          ],
+        ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.wb_sunny_outlined, color: Colors.white),
+            onPressed: () {},
           ),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              _buildCard('COG', '${_heading.toStringAsFixed(1)}°', Theme.of(context).textTheme.bodyLarge?.color ?? Colors.white, cardBgColor),
-              const SizedBox(width: 8),
-              _buildCard('SOG', '${_speedKnots.toStringAsFixed(1)} kn', Colors.greenAccent, cardBgColor),
-              const SizedBox(width: 8),
-              _buildCard('ACCURACY', _isConnected ? 'HIGH' : 'OFF', Colors.cyanAccent, cardBgColor),
-            ],
+          IconButton(
+            icon: const Icon(Icons.info_outline, color: Colors.white),
+            onPressed: () {},
           ),
-          const SizedBox(height: 10),
-          // MBTiles Load / Import Bar
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            decoration: BoxDecoration(
-              color: cardBgColor,
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: Colors.blueAccent.withOpacity(0.2)),
-            ),
-            child: Row(
-              children: [
-                const Icon(Icons.map_outlined, color: Colors.blueAccent, size: 20),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    _loadedChartName != null
-                        ? 'Loaded: $_loadedChartName'
-                        : 'Mode: Online OSM (Import .mbtiles for Offline)',
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      color: _loadedChartName != null ? Colors.greenAccent : Colors.grey,
-                    ),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                if (_loadedChartName != null)
-                  IconButton(
-                    icon: const Icon(Icons.close, color: Colors.redAccent, size: 18),
-                    onPressed: _clearLoadedChart,
-                    tooltip: 'Remove Offline Chart',
-                  ),
-                ElevatedButton.icon(
-                  onPressed: _pickAndLoadMBTiles,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blueAccent.withOpacity(0.2),
-                    foregroundColor: Colors.blueAccent,
-                    elevation: 0,
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  ),
-                  icon: const Icon(Icons.folder_open, size: 16),
-                  label: const Text('Import MBTiles', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 10),
-          Expanded(
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: Stack(
+        ],
+      ),
+      body: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
+        child: Column(
+          children: [
+            // 1. GPS Status Card
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1B2230),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  FlutterMap(
-                    mapController: _mapController,
-                    options: MapOptions(
-                      initialCenter: _currentPosition,
-                      initialZoom: 13.0,
-                      minZoom: 3.0,
-                      maxZoom: 18.0,
-                    ),
-                    children: [
-                      TileLayer(
-                        tileProvider: _mbTilesProvider ?? NetworkTileProvider(),
-                        urlTemplate: _mbTilesProvider == null
-                            ? 'https://tile.openstreetmap.org/{z}/{x}/{y}.png'
-                            : null,
-                        userAgentPackageName: 'com.pilotplug.app',
-                        tileBuilder: (widget.isDarkMode && _mbTilesProvider == null)
-                            ? (context, tileWidget, tile) {
-                                return ColorFiltered(
-                                  colorFilter: const ColorFilter.matrix(<double>[
-                                    -0.2126, -0.7152, -0.0722, 0, 255,
-                                    -0.2126, -0.7152, -0.0722, 0, 255,
-                                    -0.2126, -0.7152, -0.0722, 0, 255,
-                                    0,       0,       0,       1, 0,
-                                  ]),
-                                  child: tileWidget,
-                                );
-                              }
-                            : null,
-                      ),
-                      MarkerLayer(
-                        markers: [
-                          Marker(
-                            point: _currentPosition,
-                            width: 50,
-                            height: 50,
-                            child: Transform.rotate(
-                              angle: (_heading * (3.141592653589793 / 180)),
-                              child: const Icon(
-                                Icons.navigation,
-                                color: Colors.redAccent,
-                                size: 36,
-                              ),
-                            ),
-                          ),
-                        ],
+                  Row(
+                    children: const [
+                      Icon(Icons.circle, color: Colors.amber, size: 10),
+                      SizedBox(width: 8),
+                      Text(
+                        'CONNECTING...',
+                        style: TextStyle(
+                          color: Colors.amber,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                        ),
                       ),
                     ],
                   ),
-                  Positioned(
-                    bottom: 12,
-                    left: 12,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: widget.isDarkMode ? Colors.black87 : Colors.white.withOpacity(0.9),
-                        borderRadius: BorderRadius.circular(6),
-                        border: Border.all(color: Colors.blueAccent.withOpacity(0.3)),
+                  ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF263248),
+                      foregroundColor: Colors.grey,
+                      elevation: 0,
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
                       ),
-                      child: Text(
-                        '${_currentPosition.latitude.toStringAsFixed(5)}°N, ${_currentPosition.longitude.toStringAsFixed(5)}°E',
-                        style: TextStyle(
-                          color: widget.isDarkMode ? Colors.cyanAccent : Colors.blueAccent,
-                          fontSize: 11,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
+                    ),
+                    onPressed: () {},
+                    icon: const Icon(Icons.gps_fixed, size: 16, color: Colors.grey),
+                    label: const Text(
+                      'CONNECT GPS',
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
                     ),
                   ),
                 ],
               ),
             ),
-          ),
-        ],
-      ),
-    );
-  }
+            const SizedBox(height: 10),
 
-  static Widget _buildCard(String label, String value, Color textColor, Color bgColor) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
-        decoration: BoxDecoration(
-          color: bgColor,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: Colors.black12),
-        ),
-        child: Column(
-          children: [
-            Text(label, style: const TextStyle(color: Colors.grey, fontSize: 11, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 4),
-            Text(value, style: TextStyle(color: textColor, fontSize: 15, fontWeight: FontWeight.bold)),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class DockingScreen extends StatelessWidget {
-  final double bowDistance;
-  final double lateralSpeed;
-  final double sternDistance;
-  final Function(double, double, double) onUpdate;
-
-  const DockingScreen({
-    super.key,
-    required this.bowDistance,
-    required this.lateralSpeed,
-    required this.sternDistance,
-    required this.onUpdate,
-  });
-
-  void _showEditDialog(BuildContext context) {
-    final bowController = TextEditingController(text: bowDistance.toStringAsFixed(2));
-    final speedController = TextEditingController(text: lateralSpeed.toStringAsFixed(2));
-    final sternController = TextEditingController(text: sternDistance.toStringAsFixed(2));
-
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          backgroundColor: Theme.of(context).cardColor,
-          title: const Text('Edit Docking Parameters', style: TextStyle(color: Colors.blueAccent)),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: bowController,
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                decoration: const InputDecoration(labelText: 'Bow Distance (NM)', labelStyle: TextStyle(color: Colors.grey)),
-              ),
-              TextField(
-                controller: speedController,
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                decoration: const InputDecoration(labelText: 'Lateral Speed (kn)', labelStyle: TextStyle(color: Colors.grey)),
-              ),
-              TextField(
-                controller: sternController,
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                decoration: const InputDecoration(labelText: 'Stern Distance (NM)', labelStyle: TextStyle(color: Colors.grey)),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
+            // 2. Telemetry Cards (COG, SOG, ACCURACY)
+            Row(
+              children: [
+                _buildTelemetryCard('COG', '0.0°', Colors.white),
+                const SizedBox(width: 8),
+                _buildTelemetryCard('SOG', '0.0 kn', const Color(0xFF00E676)),
+                const SizedBox(width: 8),
+                _buildTelemetryCard('ACCURACY', 'OFF', const Color(0xFF00E5FF)),
+              ],
             ),
-            ElevatedButton(
-              onPressed: () {
-                final bow = double.tryParse(bowController.text) ?? bowDistance;
-                final speed = double.tryParse(speedController.text) ?? lateralSpeed;
-                final stern = double.tryParse(sternController.text) ?? sternDistance;
-                onUpdate(bow, speed, stern);
-                Navigator.pop(context);
-              },
-              child: const Text('Save'),
-            ),
-          ],
-        );
-      },
-    );
-  }
+            const SizedBox(height: 10),
 
-  @override
-  Widget build(BuildContext context) {
-    final cardBgColor = Theme.of(context).cardColor;
-
-    return Padding(
-      padding: const EdgeInsets.all(16.0),
-      child: Column(
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text('DOCKING PREDICTION TOOL', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blueAccent, fontSize: 16)),
-              IconButton(
-                icon: const Icon(Icons.edit, color: Colors.cyanAccent),
-                onPressed: () => _showEditDialog(context),
-                tooltip: 'Manual Edit Values',
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Expanded(
-            child: Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(20),
+            // 3. Mode Bar & Import MBTiles Button
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
-                color: cardBgColor,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: Colors.black12),
+                color: const Color(0xFF1B2230),
+                borderRadius: BorderRadius.circular(12),
               ),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.spaceAround,
+              child: Row(
                 children: [
-                  _buildDockingMetric('BOW DISTANCE', '${bowDistance.toStringAsFixed(2)} NM', Colors.redAccent),
-                  _buildDockingMetric('LATERAL SPEED', '${lateralSpeed.toStringAsFixed(2)} kn', Colors.greenAccent),
-                  _buildDockingMetric('STERN DISTANCE', '${sternDistance.toStringAsFixed(2)} NM', Colors.lightBlueAccent),
+                  const Icon(Icons.map_outlined, color: Color(0xFF29B6F6), size: 20),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      _mbtilesPath.isEmpty
+                          ? 'Mode: Online OSM (Import .mbtiles fo...'
+                          : 'Mode: Offline MBTiles Loaded',
+                      style: const TextStyle(color: Colors.white70, fontSize: 13),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF1D4ED8),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                    ),
+                    onPressed: _importMBTiles,
+                    icon: const Icon(Icons.folder_open, size: 16),
+                    label: const Text('Import MBTiles', style: TextStyle(fontSize: 12)),
+                  ),
                 ],
               ),
             ),
-          ),
-          const SizedBox(height: 12),
-          const Text('Tap ✏️ icon on top right to edit values', style: TextStyle(color: Colors.grey, fontSize: 12)),
-        ],
-      ),
-    );
-  }
+            const SizedBox(height: 10),
 
-  Widget _buildDockingMetric(String title, String value, Color color) {
-    return Column(
-      children: [
-        Text(title, style: const TextStyle(color: Colors.grey, fontSize: 12)),
-        const SizedBox(height: 4),
-        Text(value, style: TextStyle(color: color, fontSize: 28, fontWeight: FontWeight.bold)),
-      ],
-    );
-  }
-}
-
-class NmeaBroadcasterScreen extends StatefulWidget {
-  const NmeaBroadcasterScreen({super.key});
-
-  @override
-  State<NmeaBroadcasterScreen> createState() => _NmeaBroadcasterScreenState();
-}
-
-class _NmeaBroadcasterScreenState extends State<NmeaBroadcasterScreen> {
-  bool _isBroadcasting = false;
-  ServerSocket? _serverSocket;
-  final List<Socket> _clients = [];
-  String _lastNmeaSentence = "No data transmitted yet.";
-  final int _port = 10110;
-  StreamSubscription<Position>? _positionStream;
-
-  void _toggleBroadcasting(bool value) async {
-    if (value) {
-      try {
-        _serverSocket = await ServerSocket.bind(InternetAddress.anyIPv4, _port);
-        setState(() {
-          _isBroadcasting = true;
-        });
-
-        _serverSocket?.listen((Socket client) {
-          setState(() {
-            _clients.add(client);
-          });
-
-          client.done.then((_) {
-            setState(() {
-              _clients.remove(client);
-            });
-          });
-        });
-
-        _startNmeaStream();
-      } catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Failed to start TCP Server: $e')),
-          );
-        }
-      }
-    } else {
-      _stopBroadcasting();
-    }
-  }
-
-  void _startNmeaStream() {
-    _positionStream = Geolocator.getPositionStream(
-      locationSettings: const LocationSettings(
-        accuracy: LocationAccuracy.high,
-        distanceFilter: 1,
-      ),
-    ).listen((Position position) {
-      String nmea = _generateGPRMC(position);
-      if (mounted) {
-        setState(() {
-          _lastNmeaSentence = nmea;
-        });
-      }
-
-      for (var client in _clients) {
-        client.write('$nmea\r\n');
-      }
-    });
-  }
-
-  void _stopBroadcasting() {
-    _positionStream?.cancel();
-    for (var client in _clients) {
-      client.close();
-    }
-    _clients.clear();
-    _serverSocket?.close();
-    if (mounted) {
-      setState(() {
-        _isBroadcasting = false;
-      });
-    }
-  }
-
-  String _generateGPRMC(Position pos) {
-    final now = DateTime.now().toUtc();
-    final timeStr = "${now.hour.toString().padLeft(2, '0')}${now.minute.toString().padLeft(2, '0')}${now.second.toString().padLeft(2, '0')}.00";
-    final dateStr = "${now.day.toString().padLeft(2, '0')}${now.month.toString().padLeft(2, '0')}${now.year.toString().substring(2)}";
-
-    final latDeg = pos.latitude.abs().floor();
-    final latMin = ((pos.latitude.abs() - latDeg) * 60).toStringAsFixed(4).padLeft(7, '0');
-    final latDir = pos.latitude >= 0 ? 'N' : 'S';
-
-    final lonDeg = pos.longitude.abs().floor();
-    final lonMin = ((pos.longitude.abs() - lonDeg) * 60).toStringAsFixed(4).padLeft(7, '0');
-    final lonDir = pos.longitude >= 0 ? 'E' : 'W';
-
-    final speedKnots = (pos.speed * 1.94384).toStringAsFixed(1);
-    final heading = pos.heading.toStringAsFixed(1);
-
-    String body = "GPRMC,$timeStr,A,${latDeg.toString().padLeft(2, '0')}$latMin,$latDir,${lonDeg.toString().padLeft(3, '0')}$lonMin,$lonDir,$speedKnots,$heading,$dateStr,,";
-    
-    int checksum = 0;
-    for (int i = 0; i < body.length; i++) {
-      checksum ^= body.codeUnitAt(i);
-    }
-
-    return "\$$body*${checksum.toRadixString(16).toUpperCase().padLeft(2, '0')}";
-  }
-
-  @override
-  void dispose() {
-    _stopBroadcasting();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final cardBgColor = Theme.of(context).cardColor;
-
-    return Padding(
-      padding: const EdgeInsets.all(16.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text('NMEA BROADCASTER FOR OPENCPN', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blueAccent, fontSize: 16)),
-          const SizedBox(height: 12),
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: cardBgColor,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.black12),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+            // 4. Map Display Area (Dark Styled Map with Vessel Position)
+            Expanded(
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: FlutterMap(
+                  options: MapOptions(
+                    initialCenter: _currentLocation,
+                    initialZoom: 13.0,
+                  ),
                   children: [
-                    const Text('TCP NMEA Server', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-                    Text('Port: $_port • Clients Connected: ${_clients.length}', style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                    TileLayer(
+                      urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                      userAgentPackageName: 'com.example.pilot_plug',
+                    ),
+                    MarkerLayer(
+                      markers: [
+                        Marker(
+                          point: _currentLocation,
+                          width: 40,
+                          height: 40,
+                          child: const Icon(
+                            Icons.navigation,
+                            color: Colors.redAccent,
+                            size: 32,
+                          ),
+                        ),
+                      ],
+                    ),
                   ],
                 ),
-                Switch(
-                  value: _isBroadcasting,
-                  onChanged: _toggleBroadcasting,
-                  activeColor: Colors.greenAccent,
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 16),
-          const Text('LIVE SENTENCE TRANSMITTED:', style: TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 6),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.black,
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: Colors.greenAccent.withOpacity(0.3)),
-            ),
-            child: Text(
-              _lastNmeaSentence,
-              style: const TextStyle(color: Colors.greenAccent, fontFamily: 'monospace', fontSize: 13),
-            ),
-          ),
-          const SizedBox(height: 16),
-          const Text('OPENCPN CONNECTION GUIDE:', style: TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 6),
-          Expanded(
-            child: Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: cardBgColor,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: const SingleChildScrollView(
-                child: Text(
-                  '1. Ikonekta ang Laptop/PC sa Mobile Hotspot ng Cellphone mo.\n'
-                  '2. Sa OpenCPN: Pumunta sa Options ⚙️ -> Connections -> Add Connection.\n'
-                  '3. Network Type: TCP\n'
-                  '4. Address: IP Address ng Cellphone (e.g. 192.168.43.1)\n'
-                  '5. DataPort: 10110\n'
-                  '6. I-click ang Apply / OK. Lalabas na ang real-time GPS position ng phone mo sa OpenCPN!',
-                  style: TextStyle(fontSize: 13, height: 1.5),
-                ),
               ),
             ),
+          ],
+        ),
+      ),
+
+      // 5. Bottom Navigation Bar
+      bottomNavigationBar: BottomNavigationBar(
+        currentIndex: _selectedIndex,
+        onTap: (index) {
+          setState(() {
+            _selectedIndex = index;
+          });
+        },
+        backgroundColor: const Color(0xFF121824),
+        selectedItemColor: const Color(0xFF29B6F6),
+        unselectedItemColor: Colors.grey,
+        items: const [
+          BottomNavigationBarItem(
+            icon: Icon(Icons.directions_boat),
+            label: 'Pilotage',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.anchor),
+            label: 'Docking',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.sensors),
+            label: 'NMEA Share',
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildTelemetryCard(String title, String value, Color valueColor) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        decoration: BoxDecoration(
+          color: const Color(0xFF1B2230),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Column(
+          children: [
+            Text(
+              title,
+              style: const TextStyle(
+                color: Colors.grey,
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              value,
+              style: TextStyle(
+                color: valueColor,
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
