@@ -471,7 +471,7 @@ class DockingScreen extends StatelessWidget {
           backgroundColor: Theme.of(context).cardColor,
           title: const Text('Edit Docking Parameters', style: TextStyle(color: Colors.blueAccent)),
           content: Column(
-            mainAxisSize: MinAxisSize.min,
+            mainAxisSize: MainAxisSize.min,
             children: [
               TextField(
                 controller: bowController,
