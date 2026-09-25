@@ -3,7 +3,6 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
 import 'dart:async';
-import 'dart:io';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -68,9 +67,6 @@ class _MainDashboardState extends State<MainDashboard> {
         onUpdate: _updateDockingData,
       ),
       const BridgeWingScreen(),
-      const TrainingScreen(),
-      const TestingScreen(),
-      const MaintenanceScreen(),
     ];
 
     return Scaffold(
@@ -110,15 +106,12 @@ class _MainDashboardState extends State<MainDashboard> {
         backgroundColor: const Color(0xFF161B22),
         selectedItemColor: Colors.blueAccent,
         unselectedItemColor: Colors.grey,
-        selectedFontSize: 11,
-        unselectedFontSize: 11,
+        selectedFontSize: 12,
+        unselectedFontSize: 12,
         items: const [
           BottomNavigationBarItem(icon: Icon(Icons.directions_boat), label: 'Pilotage'),
           BottomNavigationBarItem(icon: Icon(Icons.anchor), label: 'Docking'),
           BottomNavigationBarItem(icon: Icon(Icons.remove_red_eye), label: 'Bridge wing'),
-          BottomNavigationBarItem(icon: Icon(Icons.school), label: 'Training'),
-          BottomNavigationBarItem(icon: Icon(Icons.build), label: 'Testing'),
-          BottomNavigationBarItem(icon: Icon(Icons.settings), label: 'Maintenance'),
         ],
       ),
     );
@@ -136,20 +129,34 @@ class _PilotageScreenState extends State<PilotageScreen> {
   LatLng _currentPosition = const LatLng(14.5995, 120.9842);
   double _speedKnots = 0.0;
   double _heading = 0.0;
-  bool _isLoading = true;
+  bool _isConnected = false;
+  bool _isConnecting = false;
   StreamSubscription<Position>? _positionStream;
   final MapController _mapController = MapController();
 
-  @override
-  void initState() {
-    super.initState();
-    _initGPS();
-  }
+  Future<void> _toggleGPSConnection() async {
+    if (_isConnected) {
+      await _positionStream?.cancel();
+      _positionStream = null;
+      setState(() {
+        _isConnected = false;
+        _isConnecting = false;
+      });
+      return;
+    }
 
-  Future<void> _initGPS() async {
+    setState(() {
+      _isConnecting = true;
+    });
+
     bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) {
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() => _isConnecting = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Naka-OFF ang GPS ng Phone. Paki-turn ON ang Location Services.')),
+        );
+      }
       return;
     }
 
@@ -157,8 +164,38 @@ class _PilotageScreenState extends State<PilotageScreen> {
     if (permission == LocationPermission.denied) {
       permission = await Geolocator.requestPermission();
       if (permission == LocationPermission.denied) {
-        if (mounted) setState(() => _isLoading = false);
+        if (mounted) {
+          setState(() => _isConnecting = false);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Kailangan ang GPS Permission para sa app.')),
+          );
+        }
         return;
+      }
+    }
+
+    try {
+      Position position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+        timeLimit: const Duration(seconds: 10),
+      );
+
+      if (mounted) {
+        setState(() {
+          _currentPosition = LatLng(position.latitude, position.longitude);
+          _speedKnots = position.speed * 1.94384;
+          _heading = position.heading;
+          _isConnected = true;
+          _isConnecting = false;
+        });
+        _mapController.move(_currentPosition, 14.0);
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _isConnected = true;
+          _isConnecting = false;
+        });
       }
     }
 
@@ -173,9 +210,9 @@ class _PilotageScreenState extends State<PilotageScreen> {
           _currentPosition = LatLng(position.latitude, position.longitude);
           _speedKnots = position.speed * 1.94384;
           _heading = position.heading;
-          _isLoading = false;
+          _isConnected = true;
+          _isConnecting = false;
         });
-
         _mapController.move(_currentPosition, _mapController.camera.zoom);
       }
     });
@@ -194,7 +231,7 @@ class _PilotageScreenState extends State<PilotageScreen> {
       child: Column(
         children: [
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             decoration: BoxDecoration(
               color: const Color(0xFF161B22),
               borderRadius: BorderRadius.circular(8),
@@ -205,21 +242,41 @@ class _PilotageScreenState extends State<PilotageScreen> {
               children: [
                 Row(
                   children: [
-                    Icon(Icons.circle, color: _isLoading ? Colors.amber : Colors.greenAccent, size: 10),
-                    const SizedBox(width: 6),
+                    Icon(
+                      Icons.circle,
+                      color: _isConnected
+                          ? Colors.greenAccent
+                          : (_isConnecting ? Colors.amber : Colors.redAccent),
+                      size: 10,
+                    ),
+                    const SizedBox(width: 8),
                     Text(
-                      _isLoading ? 'ACQUIRING GPS...' : 'MOBILE GPS ACTIVE',
+                      _isConnected
+                          ? 'GPS CONNECTED'
+                          : (_isConnecting ? 'CONNECTING...' : 'DISCONNECTED'),
                       style: TextStyle(
-                        color: _isLoading ? Colors.amber : Colors.greenAccent,
+                        color: _isConnected
+                            ? Colors.greenAccent
+                            : (_isConnecting ? Colors.amber : Colors.redAccent),
                         fontWeight: FontWeight.bold,
                         fontSize: 12,
                       ),
                     ),
                   ],
                 ),
-                Text(
-                  'LAT: ${_currentPosition.latitude.toStringAsFixed(4)}°',
-                  style: const TextStyle(color: Colors.cyanAccent, fontWeight: FontWeight.bold, fontSize: 12),
+                ElevatedButton.icon(
+                  onPressed: _isConnecting ? null : _toggleGPSConnection,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _isConnected ? Colors.red.withOpacity(0.8) : Colors.blueAccent,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                  ),
+                  icon: Icon(_isConnected ? Icons.power_settings_new : Icons.gps_fixed, size: 16),
+                  label: Text(
+                    _isConnected ? 'DISCONNECT' : 'CONNECT GPS',
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11),
+                  ),
                 ),
               ],
             ),
@@ -231,7 +288,7 @@ class _PilotageScreenState extends State<PilotageScreen> {
               const SizedBox(width: 8),
               _buildCard('SOG', '${_speedKnots.toStringAsFixed(1)} kn', Colors.greenAccent),
               const SizedBox(width: 8),
-              _buildCard('ACCURACY', 'HIGH', Colors.cyanAccent),
+              _buildCard('ACCURACY', _isConnected ? 'HIGH' : 'OFF', Colors.cyanAccent),
             ],
           ),
           const SizedBox(height: 10),
@@ -448,215 +505,5 @@ class BridgeWingScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const Center(child: Text('Bridge Wing View', style: TextStyle(color: Colors.white70)));
-  }
-}
-
-class TrainingScreen extends StatelessWidget {
-  const TrainingScreen({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return const Center(child: Text('Training Mode', style: TextStyle(color: Colors.white70)));
-  }
-}
-
-class TestingScreen extends StatefulWidget {
-  const TestingScreen({super.key});
-
-  @override
-  State<TestingScreen> createState() => _TestingScreenState();
-}
-
-class _TestingScreenState extends State<TestingScreen> {
-  bool _isBroadcasting = false;
-  ServerSocket? _serverSocket;
-  final List<Socket> _clients = [];
-  String _lastNmeaSentence = "No data transmitted yet.";
-  final int _port = 10110;
-  StreamSubscription<Position>? _positionStream;
-
-  void _toggleBroadcasting(bool value) async {
-    if (value) {
-      try {
-        _serverSocket = await ServerSocket.bind(InternetAddress.anyIPv4, _port);
-        setState(() {
-          _isBroadcasting = true;
-        });
-
-        _serverSocket?.listen((Socket client) {
-          setState(() {
-            _clients.add(client);
-          });
-
-          client.done.then((_) {
-            setState(() {
-              _clients.remove(client);
-            });
-          });
-        });
-
-        _startNmeaStream();
-      } catch (e) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to start TCP Server: $e')),
-        );
-      }
-    } else {
-      _stopBroadcasting();
-    }
-  }
-
-  void _startNmeaStream() {
-    _positionStream = Geolocator.getPositionStream(
-      locationSettings: const LocationSettings(
-        accuracy: LocationAccuracy.high,
-        distanceFilter: 1,
-      ),
-    ).listen((Position position) {
-      String nmea = _generateGPRMC(position);
-      if (mounted) {
-        setState(() {
-          _lastNmeaSentence = nmea;
-        });
-      }
-
-      for (var client in _clients) {
-        client.write('$nmea\r\n');
-      }
-    });
-  }
-
-  void _stopBroadcasting() {
-    _positionStream?.cancel();
-    for (var client in _clients) {
-      client.close();
-    }
-    _clients.clear();
-    _serverSocket?.close();
-    if (mounted) {
-      setState(() {
-        _isBroadcasting = false;
-      });
-    }
-  }
-
-  String _generateGPRMC(Position pos) {
-    final now = DateTime.now().toUtc();
-    final timeStr = "${now.hour.toString().padLeft(2, '0')}${now.minute.toString().padLeft(2, '0')}${now.second.toString().padLeft(2, '0')}.00";
-    final dateStr = "${now.day.toString().padLeft(2, '0')}${now.month.toString().padLeft(2, '0')}${now.year.toString().substring(2)}";
-
-    final latDeg = pos.latitude.abs().floor();
-    final latMin = ((pos.latitude.abs() - latDeg) * 60).toStringAsFixed(4).padLeft(7, '0');
-    final latDir = pos.latitude >= 0 ? 'N' : 'S';
-
-    final lonDeg = pos.longitude.abs().floor();
-    final lonMin = ((pos.longitude.abs() - lonDeg) * 60).toStringAsFixed(4).padLeft(7, '0');
-    final lonDir = pos.longitude >= 0 ? 'E' : 'W';
-
-    final speedKnots = (pos.speed * 1.94384).toStringAsFixed(1);
-    final heading = pos.heading.toStringAsFixed(1);
-
-    String body = "GPRMC,$timeStr,A,${latDeg.toString().padLeft(2, '0')}$latMin,$latDir,${lonDeg.toString().padLeft(3, '0')}$lonMin,$lonDir,$speedKnots,$heading,$dateStr,,";
-    
-    int checksum = 0;
-    for (int i = 0; i < body.length; i++) {
-      checksum ^= body.codeUnitAt(i);
-    }
-
-    return "\$$body*${checksum.toRadixString(16).toUpperCase().padLeft(2, '0')}";
-  }
-
-  @override
-  void dispose() {
-    _stopBroadcasting();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.all(16.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text('NMEA BROADCASTER FOR OPENCPN', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blueAccent, fontSize: 16)),
-          const SizedBox(height: 12),
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: const Color(0xFF161B22),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.white12),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text('TCP NMEA Server', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-                    Text('Port: $_port • Clients Connected: ${_clients.length}', style: const TextStyle(color: Colors.grey, fontSize: 12)),
-                  ],
-                ),
-                Switch(
-                  value: _isBroadcasting,
-                  onChanged: _toggleBroadcasting,
-                  activeColor: Colors.greenAccent,
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 16),
-          const Text('LIVE SENTENCE TRANSMITTED:', style: TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 6),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.black,
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: Colors.greenAccent.withOpacity(0.3)),
-            ),
-            child: Text(
-              _lastNmeaSentence,
-              style: const TextStyle(color: Colors.greenAccent, fontFamily: 'monospace', fontSize: 13),
-            ),
-          ),
-          const SizedBox(height: 16),
-          const Text('OPENCPN CONNECTION GUIDE:', style: TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 6),
-          Expanded(
-            child: Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: const Color(0xFF161B22),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: const SingleChildScrollView(
-                child: Text(
-                  '1. Ikonekta ang Laptop/PC sa Mobile Hotspot ng Cellphone mo.\n'
-                  '2. Sa OpenCPN: Pumunta sa Options ⚙️ -> Connections -> Add Connection.\n'
-                  '3. Network Type: TCP\n'
-                  '4. Address: IP Address ng Cellphone (e.g. 192.168.43.1)\n'
-                  '5. DataPort: 10110\n'
-                  '6. I-click ang Apply / OK. Lalabas na ang real-time GPS position ng phone mo sa OpenCPN!',
-                  style: TextStyle(color: Colors.white70, fontSize: 13, height: 1.5),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class MaintenanceScreen extends StatelessWidget {
-  const MaintenanceScreen({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return const Center(child: Text('System Maintenance', style: TextStyle(color: Colors.white54)));
   }
 }
