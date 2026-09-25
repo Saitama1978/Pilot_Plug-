@@ -401,7 +401,7 @@ class _PilotageScreenState extends State<PilotageScreen> {
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                       decoration: BoxDecoration(
-                        color: widget.isDarkMode ? Colors.black87 : Colors.white90,
+                        color: widget.isDarkMode ? Colors.black87 : Colors.white.withOpacity(0.9),
                         borderRadius: BorderRadius.circular(6),
                         border: Border.all(color: Colors.blueAccent.withOpacity(0.3)),
                       ),
@@ -471,7 +471,7 @@ class DockingScreen extends StatelessWidget {
           backgroundColor: Theme.of(context).cardColor,
           title: const Text('Edit Docking Parameters', style: TextStyle(color: Colors.blueAccent)),
           content: Column(
-            mainAxisSize: MainAxisSize.min,
+            mainAxisSize: MinAxisSize.min,
             children: [
               TextField(
                 controller: bowController,
