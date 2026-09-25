@@ -31,7 +31,7 @@ jobs:
           flutter-version: '3.24.3'
           channel: 'stable'
 
-      - name: Clean and Re-generate Android Project
+      - name: Re-generate Android Project
         run: |
           rm -rf android
           flutter create . --platforms=android --project-name=pilot_plug
@@ -41,7 +41,7 @@ jobs:
           rm -f pubspec.lock
           flutter pub get
 
-      - name: Generate App Launcher Icons
+      - name: Generate Android App Icons
         run: |
           if [ -f "icon.png" ]; then
             dart run flutter_launcher_icons
