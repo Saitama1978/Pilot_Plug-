@@ -1,9 +1,12 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:geolocator/geolocator.dart';
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
   runApp(const PilotPlugApp());
 }
 
@@ -15,7 +18,6 @@ class PilotPlugApp extends StatefulWidget {
 }
 
 class _PilotPlugAppState extends State<PilotPlugApp> {
-  // 1. STATE PARA SA DARK MODE / LIGHT MODE
   bool _isDarkMode = true;
 
   void _toggleTheme() {
@@ -30,8 +32,6 @@ class _PilotPlugAppState extends State<PilotPlugApp> {
       title: 'Pilot Plug',
       debugShowCheckedModeBanner: false,
       themeMode: _isDarkMode ? ThemeMode.dark : ThemeMode.light,
-      
-      // LIGHT THEME CONFIGURATION
       theme: ThemeData(
         brightness: Brightness.light,
         scaffoldBackgroundColor: const Color(0xFFF3F4F6),
@@ -47,8 +47,6 @@ class _PilotPlugAppState extends State<PilotPlugApp> {
           unselectedItemColor: Colors.grey,
         ),
       ),
-      
-      // DARK THEME CONFIGURATION
       darkTheme: ThemeData(
         brightness: Brightness.dark,
         scaffoldBackgroundColor: const Color(0xFF121824),
@@ -89,33 +87,163 @@ class PilotPlugDashboard extends StatefulWidget {
 }
 
 class _PilotPlugDashboardState extends State<PilotPlugDashboard> {
-  // 2. STATE PARA SA TABS, GPS, AT MBTILES
   int _selectedIndex = 0;
   String _mbtilesPath = '';
   GpsStatus _gpsStatus = GpsStatus.disconnected;
-  final LatLng _currentLocation = const LatLng(14.6000, 120.9833);
 
-  // LOGIC PARA SA GPS BUTTON
-  void _toggleGps() {
+  // MapController para maitapat/ma-center ang mapa sa totoong GPS location
+  final MapController _mapController = MapController();
+
+  // Default initial coordinates (mababago agad sa totoong GPS pwesto sa China)
+  LatLng _currentLocation = const LatLng(14.6000, 120.9833);
+  double _cog = 0.0;
+  double _sog = 0.0;
+  String _accuracy = 'OFF';
+
+  StreamSubscription<Position>? _positionStreamSubscription;
+
+  @override
+  void dispose() {
+    _positionStreamSubscription?.cancel();
+    _mapController.dispose();
+    super.dispose();
+  }
+
+  // LOGIC PARA SA TOTOONG GPS CONNECTION
+  Future<void> _toggleGps() async {
+    if (_gpsStatus == GpsStatus.connected || _gpsStatus == GpsStatus.connecting) {
+      _disconnectGps();
+      return;
+    }
+
     setState(() {
-      if (_gpsStatus == GpsStatus.disconnected) {
-        _gpsStatus = GpsStatus.connecting;
-        
-        // Simulating GPS Connection Delay (2 seconds)
-        Future.delayed(const Duration(seconds: 2), () {
-          if (mounted && _gpsStatus == GpsStatus.connecting) {
-            setState(() {
-              _gpsStatus = GpsStatus.connected;
-            });
-          }
+      _gpsStatus = GpsStatus.connecting;
+    });
+
+    try {
+      // 1. Tignan kung nakasindi ang Location Service ng cellphone
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Paki-sindi ang Location (GPS) sa settings ng iyong cellphone.'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+        setState(() {
+          _gpsStatus = GpsStatus.disconnected;
         });
-      } else {
-        _gpsStatus = GpsStatus.disconnected;
+        return;
       }
+
+      // 2. Humingi ng Location Permission
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Kailangan ang Location Permission para makuha ang GPS.'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+          setState(() {
+            _gpsStatus = GpsStatus.disconnected;
+          });
+          return;
+        }
+      }
+
+      if (permission == LocationPermission.deniedForever) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Pinagkaitan ng Location Permission. Paki-enable sa Settings.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        setState(() {
+          _gpsStatus = GpsStatus.disconnected;
+        });
+        return;
+      }
+
+      // 3. Kuhanin agad ang kasalukuyang pwesto (Current Position)
+      Position initialPosition = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+
+      _updatePosition(initialPosition);
+
+      // 4. Makinig sa patuloy na pagbabago ng GPS position (Live Stream)
+      _positionStreamSubscription = Geolocator.getPositionStream(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          distanceFilter: 1,
+        ),
+      ).listen(
+        (Position position) {
+          _updatePosition(position);
+        },
+        onError: (e) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Error sa GPS Stream: $e'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+        },
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Hindi makuha ang GPS location: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      setState(() {
+        _gpsStatus = GpsStatus.disconnected;
+      });
+    }
+  }
+
+  void _updatePosition(Position position) {
+    if (!mounted) return;
+    
+    final newLocation = LatLng(position.latitude, position.longitude);
+
+    setState(() {
+      _gpsStatus = GpsStatus.connected;
+      _currentLocation = newLocation;
+      _cog = position.heading;
+      _sog = (position.speed * 1.94384); // m/s to Knots
+      _accuracy = '${position.accuracy.toStringAsFixed(1)}m';
+    });
+
+    // I-center ang mapa sa TOTOONG GPS Location (China / kinalalagyan ng device)
+    _mapController.move(newLocation, _mapController.camera.zoom);
+  }
+
+  void _disconnectGps() {
+    _positionStreamSubscription?.cancel();
+    setState(() {
+      _gpsStatus = GpsStatus.disconnected;
+      _cog = 0.0;
+      _sog = 0.0;
+      _accuracy = 'OFF';
     });
   }
 
-  // LOGIC PARA SA MBTILES IMPORT
+  // IMPORT MBTILES LOGIC
   Future<void> _importMBTiles() async {
     try {
       FilePickerResult? result = await FilePicker.platform.pickFiles(
@@ -161,16 +289,16 @@ class _PilotPlugDashboardState extends State<PilotPlugDashboard> {
     }
   }
 
-  // LOGIC PARA SA INFO BUTTON
+  // INFO DIALOG
   void _showInfoDialog() {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('About Pilot Plug'),
-        content: Column(
+        content: const Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
-          children: const [
+          children: [
             Text('Pilot Plug Dashboard v1.0.0', style: TextStyle(fontWeight: FontWeight.bold)),
             SizedBox(height: 8),
             Text('Developer: Renante Fullo'),
@@ -194,9 +322,9 @@ class _PilotPlugDashboardState extends State<PilotPlugDashboard> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Column(
+        title: const Column(
           crossAxisAlignment: CrossAxisAlignment.start,
-          children: const [
+          children: [
             Text(
               'Pilot Plug Dashboard',
               style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
@@ -209,7 +337,6 @@ class _PilotPlugDashboardState extends State<PilotPlugDashboard> {
           ],
         ),
         actions: [
-          // DARK / LIGHT MODE TOGGLE BUTTON
           IconButton(
             icon: Icon(
               widget.isDarkMode ? Icons.wb_sunny : Icons.nightlight_round,
@@ -218,7 +345,6 @@ class _PilotPlugDashboardState extends State<PilotPlugDashboard> {
             onPressed: widget.onToggleTheme,
             tooltip: 'Toggle Theme',
           ),
-          // APP INFO BUTTON
           IconButton(
             icon: const Icon(Icons.info_outline),
             onPressed: _showInfoDialog,
@@ -227,22 +353,20 @@ class _PilotPlugDashboardState extends State<PilotPlugDashboard> {
         ],
       ),
 
-      // INDEXEDSTACK PARA SA PAGPAPALIT NG TABS
       body: IndexedStack(
         index: _selectedIndex,
         children: [
-          _buildPilotageScreen(cardColor), // Tab 0
-          _buildDockingScreen(cardColor),  // Tab 1
-          _buildNmeaScreen(cardColor),     // Tab 2
+          _buildPilotageScreen(cardColor),
+          _buildDockingScreen(cardColor),
+          _buildNmeaScreen(cardColor),
         ],
       ),
 
-      // BOTTOM NAVIGATION BAR
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _selectedIndex,
         onTap: (index) {
           setState(() {
-            _selectedIndex = index; // LUMILIPAT NA ANG TAB DITO
+            _selectedIndex = index;
           });
         },
         items: const [
@@ -292,7 +416,7 @@ class _PilotPlugDashboardState extends State<PilotPlugDashboard> {
       padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
       child: Column(
         children: [
-          // 1. GPS Status Card
+          // GPS Status Bar
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
             decoration: BoxDecoration(
@@ -328,7 +452,7 @@ class _PilotPlugDashboardState extends State<PilotPlugDashboard> {
                       borderRadius: BorderRadius.circular(8),
                     ),
                   ),
-                  onPressed: _toggleGps, // GUMAGANA NA ANG CONNECT GPS
+                  onPressed: _toggleGps,
                   icon: Icon(
                     _gpsStatus == GpsStatus.connected ? Icons.gps_off : Icons.gps_fixed,
                     size: 16,
@@ -343,26 +467,26 @@ class _PilotPlugDashboardState extends State<PilotPlugDashboard> {
           ),
           const SizedBox(height: 10),
 
-          // 2. Telemetry Cards (COG, SOG, ACCURACY)
+          // Telemetry Cards
           Row(
             children: [
               _buildTelemetryCard(
                 'COG',
-                _gpsStatus == GpsStatus.connected ? '142.5°' : '0.0°',
+                '${_cog.toStringAsFixed(1)}°',
                 widget.isDarkMode ? Colors.white : Colors.black87,
                 cardColor,
               ),
               const SizedBox(width: 8),
               _buildTelemetryCard(
                 'SOG',
-                _gpsStatus == GpsStatus.connected ? '11.4 kn' : '0.0 kn',
+                '${_sog.toStringAsFixed(1)} kn',
                 const Color(0xFF00E676),
                 cardColor,
               ),
               const SizedBox(width: 8),
               _buildTelemetryCard(
                 'ACCURACY',
-                _gpsStatus == GpsStatus.connected ? 'HIGH (1.2m)' : 'OFF',
+                _accuracy,
                 const Color(0xFF00E5FF),
                 cardColor,
               ),
@@ -370,7 +494,7 @@ class _PilotPlugDashboardState extends State<PilotPlugDashboard> {
           ),
           const SizedBox(height: 10),
 
-          // 3. Mode Bar & Import MBTiles
+          // Mode & MBTiles Bar
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             decoration: BoxDecoration(
@@ -384,7 +508,7 @@ class _PilotPlugDashboardState extends State<PilotPlugDashboard> {
                 Expanded(
                   child: Text(
                     _mbtilesPath.isEmpty
-                        ? 'Mode: Online OSM (Import .mbtiles fo...'
+                        ? 'Mode: Online OSM (Import .mbtiles for Offline)'
                         : 'Mode: Offline MBTiles Loaded',
                     style: TextStyle(
                       color: widget.isDarkMode ? Colors.white70 : Colors.black87,
@@ -411,11 +535,12 @@ class _PilotPlugDashboardState extends State<PilotPlugDashboard> {
           ),
           const SizedBox(height: 10),
 
-          // 4. Map Display Area
+          // Map Display Area
           Expanded(
             child: ClipRRect(
               borderRadius: BorderRadius.circular(12),
               child: FlutterMap(
+                mapController: _mapController,
                 options: MapOptions(
                   initialCenter: _currentLocation,
                   initialZoom: 13.0,
@@ -432,7 +557,7 @@ class _PilotPlugDashboardState extends State<PilotPlugDashboard> {
                         width: 40,
                         height: 40,
                         child: Transform.rotate(
-                          angle: _gpsStatus == GpsStatus.connected ? 1.42 : 0,
+                          angle: (_cog * 3.141592653589793 / 180),
                           child: const Icon(
                             Icons.navigation,
                             color: Colors.redAccent,
@@ -481,7 +606,9 @@ class _PilotPlugDashboardState extends State<PilotPlugDashboard> {
                   const Icon(Icons.anchor, size: 64, color: Color(0xFF29B6F6)),
                   const SizedBox(height: 16),
                   Text(
-                    'Docking Telemetry Active',
+                    _gpsStatus == GpsStatus.connected
+                        ? 'Docking Telemetry Active'
+                        : 'GPS Disconnected',
                     style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
@@ -560,10 +687,10 @@ class _PilotPlugDashboardState extends State<PilotPlugDashboard> {
                       child: SingleChildScrollView(
                         child: Text(
                           _gpsStatus == GpsStatus.connected
-                              ? '\$GPRMC,123519,A,1436.000,N,12059.000,E,022.4,084.4,230326,003.1,W*6A\n'
-                                '\$GPGGA,123519,1436.000,N,12059.000,E,1,08,0.9,545.4,M,46.9,M,,*47\n'
-                                '\$GPVTG,054.7,T,,M,002.2,N,004.1,K*48'
-                              : 'Waiting for GPS connection to stream NMEA sentences...',
+                              ? '\$GPRMC,123519,A,${_currentLocation.latitude.toStringAsFixed(4)},N,${_currentLocation.longitude.toStringAsFixed(4)},E,${_sog.toStringAsFixed(1)},${_cog.toStringAsFixed(1)},230326,003.1,W*6A\n'
+                                '\$GPGGA,123519,${_currentLocation.latitude.toStringAsFixed(4)},N,${_currentLocation.longitude.toStringAsFixed(4)},E,1,08,0.9,545.4,M,46.9,M,,*47\n'
+                                '\$GPVTG,${_cog.toStringAsFixed(1)},T,,M,${_sog.toStringAsFixed(1)},N,${(_sog * 1.852).toStringAsFixed(1)},K*48'
+                              : 'Pindutin ang "CONNECT GPS" sa Pilotage tab para mag-stream ng NMEA sentences...',
                           style: const TextStyle(
                             fontFamily: 'monospace',
                             color: Colors.greenAccent,
