@@ -3,6 +3,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
 import 'dart:async';
+import 'dart:io';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -44,7 +45,6 @@ class MainDashboard extends StatefulWidget {
 class _MainDashboardState extends State<MainDashboard> {
   int _selectedIndex = 0;
 
-  // Real-time / Editable Docking Parameters
   double bowDistance = 0.57;
   double lateralSpeed = 4.00;
   double sternDistance = 0.12;
@@ -244,7 +244,7 @@ class _PilotageScreenState extends State<PilotageScreen> {
                     mapController: _mapController,
                     options: MapOptions(
                       initialCenter: _currentPosition,
-                      initialZoom: 15.0,
+                      initialZoom: 13.0,
                     ),
                     children: [
                       TileLayer(
@@ -460,12 +460,195 @@ class TrainingScreen extends StatelessWidget {
   }
 }
 
-class TestingScreen extends StatelessWidget {
+class TestingScreen extends StatefulWidget {
   const TestingScreen({super.key});
 
   @override
+  State<TestingScreen> createState() => _TestingScreenState();
+}
+
+class _TestingScreenState extends State<TestingScreen> {
+  bool _isBroadcasting = false;
+  ServerSocket? _serverSocket;
+  final List<Socket> _clients = [];
+  String _lastNmeaSentence = "No data transmitted yet.";
+  final int _port = 10110;
+  StreamSubscription<Position>? _positionStream;
+
+  void _toggleBroadcasting(bool value) async {
+    if (value) {
+      try {
+        _serverSocket = await ServerSocket.bind(InternetAddress.anyIPv4, _port);
+        setState(() {
+          _isBroadcasting = true;
+        });
+
+        _serverSocket?.listen((Socket client) {
+          setState(() {
+            _clients.add(client);
+          });
+
+          client.done.then((_) {
+            setState(() {
+              _clients.remove(client);
+            });
+          });
+        });
+
+        _startNmeaStream();
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to start TCP Server: $e')),
+        );
+      }
+    } else {
+      _stopBroadcasting();
+    }
+  }
+
+  void _startNmeaStream() {
+    _positionStream = Geolocator.getPositionStream(
+      locationSettings: const LocationSettings(
+        accuracy: LocationAccuracy.high,
+        distanceFilter: 1,
+      ),
+    ).listen((Position position) {
+      String nmea = _generateGPRMC(position);
+      if (mounted) {
+        setState(() {
+          _lastNmeaSentence = nmea;
+        });
+      }
+
+      for (var client in _clients) {
+        client.write('$nmea\r\n');
+      }
+    });
+  }
+
+  void _stopBroadcasting() {
+    _positionStream?.cancel();
+    for (var client in _clients) {
+      client.close();
+    }
+    _clients.clear();
+    _serverSocket?.close();
+    if (mounted) {
+      setState(() {
+        _isBroadcasting = false;
+      });
+    }
+  }
+
+  String _generateGPRMC(Position pos) {
+    final now = DateTime.now().toUtc();
+    final timeStr = "${now.hour.toString().padLeft(2, '0')}${now.minute.toString().padLeft(2, '0')}${now.second.toString().padLeft(2, '0')}.00";
+    final dateStr = "${now.day.toString().padLeft(2, '0')}${now.month.toString().padLeft(2, '0')}${now.year.toString().substring(2)}";
+
+    final latDeg = pos.latitude.abs().floor();
+    final latMin = ((pos.latitude.abs() - latDeg) * 60).toStringAsFixed(4).padLeft(7, '0');
+    final latDir = pos.latitude >= 0 ? 'N' : 'S';
+
+    final lonDeg = pos.longitude.abs().floor();
+    final lonMin = ((pos.longitude.abs() - lonDeg) * 60).toStringAsFixed(4).padLeft(7, '0');
+    final lonDir = pos.longitude >= 0 ? 'E' : 'W';
+
+    final speedKnots = (pos.speed * 1.94384).toStringAsFixed(1);
+    final heading = pos.heading.toStringAsFixed(1);
+
+    String body = "GPRMC,$timeStr,A,${latDeg.toString().padLeft(2, '0')}$latMin,$latDir,${lonDeg.toString().padLeft(3, '0')}$lonMin,$lonDir,$speedKnots,$heading,$dateStr,,";
+    
+    int checksum = 0;
+    for (int i = 0; i < body.length; i++) {
+      checksum ^= body.codeUnitAt(i);
+    }
+
+    return "\$$body*${checksum.toRadixString(16).toUpperCase().padLeft(2, '0')}";
+  }
+
+  @override
+  void dispose() {
+    _stopBroadcasting();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return const Center(child: Text('NMEA & GPS Stream Tester', style: TextStyle(color: Colors.amberAccent)));
+    return Padding(
+      padding: const EdgeInsets.all(16.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('NMEA BROADCASTER FOR OPENCPN', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blueAccent, fontSize: 16)),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: const Color(0xFF161B22),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.white12),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('TCP NMEA Server', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                    Text('Port: $_port • Clients Connected: ${_clients.length}', style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                  ],
+                ),
+                Switch(
+                  value: _isBroadcasting,
+                  onChanged: _toggleBroadcasting,
+                  activeColor: Colors.greenAccent,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          const Text('LIVE SENTENCE TRANSMITTED:', style: TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 6),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.black,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.greenAccent.withOpacity(0.3)),
+            ),
+            child: Text(
+              _lastNmeaSentence,
+              style: const TextStyle(color: Colors.greenAccent, fontFamily: 'monospace', fontSize: 13),
+            ),
+          ),
+          const SizedBox(height: 16),
+          const Text('OPENCPN CONNECTION GUIDE:', style: TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 6),
+          Expanded(
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFF161B22),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const SingleChildScrollView(
+                child: Text(
+                  '1. Ikonekta ang Laptop/PC sa Mobile Hotspot ng Cellphone mo.\n'
+                  '2. Sa OpenCPN: Pumunta sa Options ⚙️ -> Connections -> Add Connection.\n'
+                  '3. Network Type: TCP\n'
+                  '4. Address: IP Address ng Cellphone (e.g. 192.168.43.1)\n'
+                  '5. DataPort: 10110\n'
+                  '6. I-click ang Apply / OK. Lalabas na ang real-time GPS position ng phone mo sa OpenCPN!',
+                  style: TextStyle(color: Colors.white70, fontSize: 13, height: 1.5),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 
