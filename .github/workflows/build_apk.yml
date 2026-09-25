@@ -2,7 +2,9 @@ name: Build Android APK
 
 on:
   push:
-    branches: [ "main" ]
+    branches:
+      - main
+      - master
   workflow_dispatch:
 
 jobs:
@@ -10,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
       - name: Set up Java JDK
@@ -25,14 +27,20 @@ jobs:
           flutter-version: '3.19.6'
           channel: 'stable'
 
-      - name: Get Dependencies
+      - name: Re-generate Modern Android Project Files
+        run: flutter create . --platforms=android --project-name=pilot_plug
+
+      - name: Install Dependencies
         run: flutter pub get
 
-      - name: Build APK
-        run: flutter build apk --release
+      - name: Generate App Launcher Icon
+        run: dart run flutter_launcher_icons
+
+      - name: Build Release APK
+        run: flutter build apk --release --no-tree-shake-icons
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Pilot-Plug-App
+          name: pilot-plug-app-release
           path: build/app/outputs/flutter-apk/app-release.apk
