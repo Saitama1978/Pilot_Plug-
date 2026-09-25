@@ -28,7 +28,7 @@ jobs:
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.19.x'
+          flutter-version: '3.19.6'
           channel: 'stable'
 
       - name: Clean Old Android Files
@@ -36,6 +36,12 @@ jobs:
 
       - name: Create Fresh Android V2 Project
         run: flutter create . --platforms=android --project-name=pilot_plug
+
+      - name: Update Kotlin Version
+        run: |
+          sed -i 's/ext.kotlin_version = .*/ext.kotlin_version = "1.9.22"/' android/build.gradle || true
+          sed -i 's/kotlin_version = .*/kotlin_version = "1.9.22"/' android/build.gradle || true
+          sed -i 's/id "org.jetbrains.kotlin.android" version .*/id "org.jetbrains.kotlin.android" version "1.9.22" apply false/' android/settings.gradle || true
 
       - name: Add Internet Permission to AndroidManifest
         run: |
