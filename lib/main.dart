@@ -367,11 +367,14 @@ class _PilotageScreenState extends State<PilotageScreen> {
                     options: MapOptions(
                       initialCenter: _currentPosition,
                       initialZoom: 13.0,
+                      minZoom: 3.0,
+                      maxZoom: 18.0,
                     ),
                     children: [
                       TileLayer(
                         urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                         userAgentPackageName: 'com.pilotplug.app',
+                        tileProvider: NetworkTileProvider(),
                         tileBuilder: widget.isDarkMode
                             ? (context, tileWidget, tile) {
                                 return ColorFiltered(
