@@ -100,15 +100,18 @@ class _PilotPlugDashboardState extends State<PilotPlugDashboard> {
   double _cog = 0.0;
   double _sog = 0.0;
   String _accuracy = 'OFF';
+  
+  // Lat/Long formatted strings
+  String _latFormatted = '00° 00.000\' N';
+  String _lonFormatted = '000° 00.000\' E';
 
   // NMEA Share Settings
   bool _isNmeaSharingEnabled = false;
-  String _nmeaProtocol = 'UDP'; // UDP, TCP, o Bluetooth
+  String _nmeaProtocol = 'UDP';
   int _nmeaPort = 10110;
 
   StreamSubscription<Position>? _positionStreamSubscription;
   
-  // Network Sockets para sa totoong pag-broadcast
   RawDatagramSocket? _udpSocket;
   ServerSocket? _tcpServer;
   Socket? _tcpClientSocket;
@@ -121,7 +124,23 @@ class _PilotPlugDashboardState extends State<PilotPlugDashboard> {
     super.dispose();
   }
 
-  // SIMULAN ANG NMEA STREAMING (UDP / TCP / BLUETOOTH)
+  // CONVERT DECIMAL DEGREES TO DEGREES & MINUTES (DD MM.mmm)
+  void _formatCoordinates(double lat, double lon) {
+    // Latitude formatting
+    String latDirection = lat >= 0 ? 'N' : 'S';
+    double latAbs = lat.abs();
+    int latDeg = latAbs.floor();
+    double latMin = (latAbs - latDeg) * 60;
+    _latFormatted = '${latDeg.toString().padLeft(2, '0')}° ${latMin.toStringAsFixed(3).padLeft(6, '0')}\' $latDirection';
+
+    // Longitude formatting
+    String lonDirection = lon >= 0 ? 'E' : 'W';
+    double lonAbs = lon.abs();
+    int lonDeg = lonAbs.floor();
+    double lonMin = (lonAbs - lonDeg) * 60;
+    _lonFormatted = '${lonDeg.toString().padLeft(3, '0')}° ${lonMin.toStringAsFixed(3).padLeft(6, '0')}\' $lonDirection';
+  }
+
   Future<void> _startNmeaStreaming() async {
     if (_nmeaProtocol == 'UDP') {
       try {
@@ -169,14 +188,11 @@ class _PilotPlugDashboardState extends State<PilotPlugDashboard> {
     _tcpClientSocket = null;
   }
 
-  // IPADALA ANG NMEA DATA SA NETWORK
   void _broadcastNmeaData(String nmeaSentence) {
     if (!_isNmeaSharingEnabled) return;
-
     List<int> data = nmeaSentence.codeUnits;
 
     if (_nmeaProtocol == 'UDP' && _udpSocket != null) {
-      // I-broadcast sa buong local hotspot network (subnet broadcast o 255.255.255.255)
       try {
         _udpSocket?.send(data, InternetAddress('255.255.255.255'), _nmeaPort);
       } catch (_) {}
@@ -187,7 +203,6 @@ class _PilotPlugDashboardState extends State<PilotPlugDashboard> {
     }
   }
 
-  // TOGGLE GPS LOGIC
   Future<void> _toggleGps() async {
     if (_gpsStatus == GpsStatus.connected || _gpsStatus == GpsStatus.connecting) {
       _disconnectGps();
@@ -261,6 +276,7 @@ class _PilotPlugDashboardState extends State<PilotPlugDashboard> {
     if (!mounted) return;
     
     final newLocation = LatLng(position.latitude, position.longitude);
+    _formatCoordinates(position.latitude, position.longitude);
 
     setState(() {
       _gpsStatus = GpsStatus.connected;
@@ -272,7 +288,6 @@ class _PilotPlugDashboardState extends State<PilotPlugDashboard> {
 
     _mapController.move(newLocation, _mapController.camera.zoom);
 
-    // Bumuo ng totoong NMEA sentences at i-broadcast
     if (_isNmeaSharingEnabled) {
       String rmc = '\$GPRMC,123519,A,${position.latitude.toStringAsFixed(4)},N,${position.longitude.toStringAsFixed(4)},E,${_sog.toStringAsFixed(1)},${_cog.toStringAsFixed(1)},250926,003.1,W*6A\r\n';
       String gga = '\$GPGGA,123519,${position.latitude.toStringAsFixed(4)},N,${position.longitude.toStringAsFixed(4)},E,1,08,0.9,545.4,M,46.9,M,,*47\r\n';
@@ -291,10 +306,11 @@ class _PilotPlugDashboardState extends State<PilotPlugDashboard> {
       _cog = 0.0;
       _sog = 0.0;
       _accuracy = 'OFF';
+      _latFormatted = '00° 00.000\' N';
+      _lonFormatted = '000° 00.000\' E';
     });
   }
 
-  // IMPORT MBTILES
   Future<void> _importMBTiles() async {
     try {
       FilePickerResult? result = await FilePicker.platform.pickFiles(type: FileType.any);
@@ -437,6 +453,34 @@ class _PilotPlugDashboardState extends State<PilotPlugDashboard> {
             ),
           ),
           const SizedBox(height: 10),
+          // LATITUDE & LONGITUDE DISPLAY (Degree & Minutes)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            decoration: BoxDecoration(color: cardColor, borderRadius: BorderRadius.circular(12)),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: [
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('LATITUDE', style: TextStyle(color: Colors.grey, fontSize: 10, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 2),
+                    Text(_latFormatted, style: TextStyle(fontFamily: 'monospace', fontSize: 14, fontWeight: FontWeight.bold, color: widget.isDarkMode ? Colors.cyanAccent : Colors.blue)),
+                  ],
+                ),
+                Container(height: 25, width: 1, color: Colors.grey.withOpacity(0.3)),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('LONGITUDE', style: TextStyle(color: Colors.grey, fontSize: 10, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 2),
+                    Text(_lonFormatted, style: TextStyle(fontFamily: 'monospace', fontSize: 14, fontWeight: FontWeight.bold, color: widget.isDarkMode ? Colors.cyanAccent : Colors.blue)),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 10),
           Row(
             children: [
               _buildTelemetryCard('COG', '${_cog.toStringAsFixed(1)}°', widget.isDarkMode ? Colors.white : Colors.black87, cardColor),
@@ -508,6 +552,39 @@ class _PilotPlugDashboardState extends State<PilotPlugDashboard> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text('Docking Assistance', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: widget.isDarkMode ? Colors.white : Colors.black87)),
+          const SizedBox(height: 16),
+          // IDINAGDAG RIN SA DOCKING TAB ANG POSITION NG VESSEL (DEGREE & MINUTES)
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(color: cardColor, borderRadius: BorderRadius.circular(12)),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Vessel GPS Position', style: TextStyle(fontSize: 12, color: Colors.grey, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 8),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('LAT:', style: TextStyle(fontSize: 10, color: Colors.grey)),
+                        Text(_latFormatted, style: const TextStyle(fontFamily: 'monospace', fontSize: 13, fontWeight: FontWeight.bold, color: Colors.cyanAccent)),
+                      ],
+                    ),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('LON:', style: TextStyle(fontSize: 10, color: Colors.grey)),
+                        Text(_lonFormatted, style: const TextStyle(fontFamily: 'monospace', fontSize: 13, fontWeight: FontWeight.bold, color: Colors.cyanAccent)),
+                      ],
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
           const SizedBox(height: 16),
           Expanded(
             child: Container(
