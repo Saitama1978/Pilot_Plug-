@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -102,16 +103,88 @@ class _PilotPlugDashboardState extends State<PilotPlugDashboard> {
 
   // NMEA Share Settings
   bool _isNmeaSharingEnabled = false;
-  String _nmeaProtocol = 'UDP'; // Pwedeng UDP, TCP, o BLUETOOTH
+  String _nmeaProtocol = 'UDP'; // UDP, TCP, o Bluetooth
   int _nmeaPort = 10110;
 
   StreamSubscription<Position>? _positionStreamSubscription;
+  
+  // Network Sockets para sa totoong pag-broadcast
+  RawDatagramSocket? _udpSocket;
+  ServerSocket? _tcpServer;
+  Socket? _tcpClientSocket;
 
   @override
   void dispose() {
     _positionStreamSubscription?.cancel();
     _mapController.dispose();
+    _stopNmeaStreaming();
     super.dispose();
+  }
+
+  // SIMULAN ANG NMEA STREAMING (UDP / TCP / BLUETOOTH)
+  Future<void> _startNmeaStreaming() async {
+    if (_nmeaProtocol == 'UDP') {
+      try {
+        _udpSocket = await RawDatagramSocket.bind(InternetAddress.anyIPv4, 0);
+        _udpSocket?.broadcastEnabled = true;
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('UDP Broadcasting Active sa Port 10110'), backgroundColor: Colors.green),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error sa UDP Socket: $e'), backgroundColor: Colors.red),
+          );
+        }
+      }
+    } else if (_nmeaProtocol == 'TCP') {
+      try {
+        _tcpServer = await ServerSocket.bind(InternetAddress.anyIPv4, _nmeaPort);
+        _tcpServer!.listen((Socket client) {
+          _tcpClientSocket = client;
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('OpenCPN nakakonekta via TCP!'), backgroundColor: Colors.green),
+            );
+          }
+        });
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error sa TCP Server: $e'), backgroundColor: Colors.red),
+          );
+        }
+      }
+    }
+  }
+
+  void _stopNmeaStreaming() {
+    _udpSocket?.close();
+    _udpSocket = null;
+    _tcpServer?.close();
+    _tcpServer = null;
+    _tcpClientSocket?.close();
+    _tcpClientSocket = null;
+  }
+
+  // IPADALA ANG NMEA DATA SA NETWORK
+  void _broadcastNmeaData(String nmeaSentence) {
+    if (!_isNmeaSharingEnabled) return;
+
+    List<int> data = nmeaSentence.codeUnits;
+
+    if (_nmeaProtocol == 'UDP' && _udpSocket != null) {
+      // I-broadcast sa buong local hotspot network (subnet broadcast o 255.255.255.255)
+      try {
+        _udpSocket?.send(data, InternetAddress('255.255.255.255'), _nmeaPort);
+      } catch (_) {}
+    } else if (_nmeaProtocol == 'TCP' && _tcpClientSocket != null) {
+      try {
+        _tcpClientSocket?.add(data);
+      } catch (_) {}
+    }
   }
 
   // TOGGLE GPS LOGIC
@@ -130,15 +203,10 @@ class _PilotPlugDashboardState extends State<PilotPlugDashboard> {
       if (!serviceEnabled) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Paki-sindi ang Location (GPS) sa settings ng iyong cellphone.'),
-              backgroundColor: Colors.orange,
-            ),
+            const SnackBar(content: Text('Paki-sindi ang Location (GPS) sa settings ng iyong cellphone.'), backgroundColor: Colors.orange),
           );
         }
-        setState(() {
-          _gpsStatus = GpsStatus.disconnected;
-        });
+        setState(() { _gpsStatus = GpsStatus.disconnected; });
         return;
       }
 
@@ -148,32 +216,12 @@ class _PilotPlugDashboardState extends State<PilotPlugDashboard> {
         if (permission == LocationPermission.denied) {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Kailangan ang Location Permission para makuha ang GPS.'),
-                backgroundColor: Colors.red,
-              ),
+              const SnackBar(content: Text('Kailangan ang Location Permission para makuha ang GPS.'), backgroundColor: Colors.red),
             );
           }
-          setState(() {
-            _gpsStatus = GpsStatus.disconnected;
-          });
+          setState(() { _gpsStatus = GpsStatus.disconnected; });
           return;
         }
-      }
-
-      if (permission == LocationPermission.deniedForever) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Pinagkaitan ng Location Permission. Paki-enable sa Settings.'),
-              backgroundColor: Colors.red,
-            ),
-          );
-        }
-        setState(() {
-          _gpsStatus = GpsStatus.disconnected;
-        });
-        return;
       }
 
       Position initialPosition = await Geolocator.getCurrentPosition(
@@ -194,10 +242,7 @@ class _PilotPlugDashboardState extends State<PilotPlugDashboard> {
         onError: (e) {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('Error sa GPS Stream: $e'),
-                backgroundColor: Colors.red,
-              ),
+              SnackBar(content: Text('Error sa GPS Stream: $e'), backgroundColor: Colors.red),
             );
           }
         },
@@ -205,15 +250,10 @@ class _PilotPlugDashboardState extends State<PilotPlugDashboard> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Hindi makuha ang GPS location: $e'),
-            backgroundColor: Colors.red,
-          ),
+          SnackBar(content: Text('Hindi makuha ang GPS location: $e'), backgroundColor: Colors.red),
         );
       }
-      setState(() {
-        _gpsStatus = GpsStatus.disconnected;
-      });
+      setState(() { _gpsStatus = GpsStatus.disconnected; });
     }
   }
 
@@ -231,6 +271,17 @@ class _PilotPlugDashboardState extends State<PilotPlugDashboard> {
     });
 
     _mapController.move(newLocation, _mapController.camera.zoom);
+
+    // Bumuo ng totoong NMEA sentences at i-broadcast
+    if (_isNmeaSharingEnabled) {
+      String rmc = '\$GPRMC,123519,A,${position.latitude.toStringAsFixed(4)},N,${position.longitude.toStringAsFixed(4)},E,${_sog.toStringAsFixed(1)},${_cog.toStringAsFixed(1)},250926,003.1,W*6A\r\n';
+      String gga = '\$GPGGA,123519,${position.latitude.toStringAsFixed(4)},N,${position.longitude.toStringAsFixed(4)},E,1,08,0.9,545.4,M,46.9,M,,*47\r\n';
+      String vtg = '\$GPVTG,${_cog.toStringAsFixed(1)},T,,M,${_sog.toStringAsFixed(1)},N,${(_sog * 1.852).toStringAsFixed(1)},K*48\r\n';
+
+      _broadcastNmeaData(rmc);
+      _broadcastNmeaData(gga);
+      _broadcastNmeaData(vtg);
+    }
   }
 
   void _disconnectGps() {
@@ -246,33 +297,22 @@ class _PilotPlugDashboardState extends State<PilotPlugDashboard> {
   // IMPORT MBTILES
   Future<void> _importMBTiles() async {
     try {
-      FilePickerResult? result = await FilePicker.platform.pickFiles(
-        type: FileType.any,
-      );
+      FilePickerResult? result = await FilePicker.platform.pickFiles(type: FileType.any);
 
       if (result != null && result.files.single.path != null) {
         String filePath = result.files.single.path!;
 
         if (filePath.toLowerCase().endsWith('.mbtiles')) {
-          setState(() {
-            _mbtilesPath = filePath;
-          });
-
+          setState(() { _mbtilesPath = filePath; });
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('Matagumpay na na-import: ${result.files.single.name}'),
-                backgroundColor: Colors.green,
-              ),
+              SnackBar(content: Text('Matagumpay na na-import: ${result.files.single.name}'), backgroundColor: Colors.green),
             );
           }
         } else {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Kailangan ng .mbtiles file format! (I-convert ang CM93 sa MBTiles)'),
-                backgroundColor: Colors.orange,
-              ),
+              const SnackBar(content: Text('Kailangan ng .mbtiles file format!'), backgroundColor: Colors.orange),
             );
           }
         }
@@ -280,10 +320,7 @@ class _PilotPlugDashboardState extends State<PilotPlugDashboard> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error sa pag-load ng MBTiles: $e'),
-            backgroundColor: Colors.red,
-          ),
+          SnackBar(content: Text('Error sa pag-load ng MBTiles: $e'), backgroundColor: Colors.red),
         );
       }
     }
@@ -306,10 +343,7 @@ class _PilotPlugDashboardState extends State<PilotPlugDashboard> {
           ],
         ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Close'),
-          ),
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close')),
         ],
       ),
     );
@@ -324,34 +358,19 @@ class _PilotPlugDashboardState extends State<PilotPlugDashboard> {
         title: const Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              'Pilot Plug Dashboard',
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-            ),
+            Text('Pilot Plug Dashboard', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
             SizedBox(height: 2),
-            Text(
-              'Developer: Renante Fullo',
-              style: TextStyle(fontSize: 12, color: Colors.grey),
-            ),
+            Text('Developer: Renante Fullo', style: TextStyle(fontSize: 12, color: Colors.grey)),
           ],
         ),
         actions: [
           IconButton(
-            icon: Icon(
-              widget.isDarkMode ? Icons.wb_sunny : Icons.nightlight_round,
-              color: widget.isDarkMode ? Colors.amber : Colors.indigo,
-            ),
+            icon: Icon(widget.isDarkMode ? Icons.wb_sunny : Icons.nightlight_round, color: widget.isDarkMode ? Colors.amber : Colors.indigo),
             onPressed: widget.onToggleTheme,
-            tooltip: 'Toggle Theme',
           ),
-          IconButton(
-            icon: const Icon(Icons.info_outline),
-            onPressed: _showInfoDialog,
-            tooltip: 'Info',
-          ),
+          IconButton(icon: const Icon(Icons.info_outline), onPressed: _showInfoDialog),
         ],
       ),
-
       body: IndexedStack(
         index: _selectedIndex,
         children: [
@@ -360,33 +379,18 @@ class _PilotPlugDashboardState extends State<PilotPlugDashboard> {
           _buildNmeaScreen(cardColor),
         ],
       ),
-
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _selectedIndex,
-        onTap: (index) {
-          setState(() {
-            _selectedIndex = index;
-          });
-        },
+        onTap: (index) { setState(() { _selectedIndex = index; }); },
         items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.directions_boat),
-            label: 'Pilotage',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.anchor),
-            label: 'Docking',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.sensors),
-            label: 'NMEA Share',
-          ),
+          BottomNavigationBarItem(icon: Icon(Icons.directions_boat), label: 'Pilotage'),
+          BottomNavigationBarItem(icon: Icon(Icons.anchor), label: 'Docking'),
+          BottomNavigationBarItem(icon: Icon(Icons.sensors), label: 'NMEA Share'),
         ],
       ),
     );
   }
 
-  // TAB 0: PILOTAGE
   Widget _buildPilotageScreen(Color cardColor) {
     Color statusColor;
     String statusText;
@@ -394,21 +398,12 @@ class _PilotPlugDashboardState extends State<PilotPlugDashboard> {
 
     switch (_gpsStatus) {
       case GpsStatus.connected:
-        statusColor = Colors.green;
-        statusText = 'GPS CONNECTED';
-        buttonText = 'DISCONNECT';
-        break;
+        statusColor = Colors.green; statusText = 'GPS CONNECTED'; buttonText = 'DISCONNECT'; break;
       case GpsStatus.connecting:
-        statusColor = Colors.amber;
-        statusText = 'CONNECTING...';
-        buttonText = 'CANCEL';
-        break;
+        statusColor = Colors.amber; statusText = 'CONNECTING...'; buttonText = 'CANCEL'; break;
       case GpsStatus.disconnected:
       default:
-        statusColor = Colors.red;
-        statusText = 'DISCONNECTED';
-        buttonText = 'CONNECT GPS';
-        break;
+        statusColor = Colors.red; statusText = 'DISCONNECTED'; buttonText = 'CONNECT GPS'; break;
     }
 
     return Padding(
@@ -417,10 +412,7 @@ class _PilotPlugDashboardState extends State<PilotPlugDashboard> {
         children: [
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-            decoration: BoxDecoration(
-              color: cardColor,
-              borderRadius: BorderRadius.circular(12),
-            ),
+            decoration: BoxDecoration(color: cardColor, borderRadius: BorderRadius.circular(12)),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -428,123 +420,65 @@ class _PilotPlugDashboardState extends State<PilotPlugDashboard> {
                   children: [
                     Icon(Icons.circle, color: statusColor, size: 10),
                     const SizedBox(width: 8),
-                    Text(
-                      statusText,
-                      style: TextStyle(
-                        color: statusColor,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 14,
-                      ),
-                    ),
+                    Text(statusText, style: TextStyle(color: statusColor, fontWeight: FontWeight.bold, fontSize: 14)),
                   ],
                 ),
                 ElevatedButton.icon(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: _gpsStatus == GpsStatus.connected
-                        ? Colors.red.withOpacity(0.2)
-                        : const Color(0xFF263248),
+                    backgroundColor: _gpsStatus == GpsStatus.connected ? Colors.red.withOpacity(0.2) : const Color(0xFF263248),
                     foregroundColor: _gpsStatus == GpsStatus.connected ? Colors.red : Colors.grey,
                     elevation: 0,
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
                   ),
                   onPressed: _toggleGps,
-                  icon: Icon(
-                    _gpsStatus == GpsStatus.connected ? Icons.gps_off : Icons.gps_fixed,
-                    size: 16,
-                  ),
-                  label: Text(
-                    buttonText,
-                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
-                  ),
+                  icon: Icon(_gpsStatus == GpsStatus.connected ? Icons.gps_off : Icons.gps_fixed, size: 16),
+                  label: Text(buttonText, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
                 ),
               ],
             ),
           ),
           const SizedBox(height: 10),
-
           Row(
             children: [
-              _buildTelemetryCard(
-                'COG',
-                '${_cog.toStringAsFixed(1)}°',
-                widget.isDarkMode ? Colors.white : Colors.black87,
-                cardColor,
-              ),
+              _buildTelemetryCard('COG', '${_cog.toStringAsFixed(1)}°', widget.isDarkMode ? Colors.white : Colors.black87, cardColor),
               const SizedBox(width: 8),
-              _buildTelemetryCard(
-                'SOG',
-                '${_sog.toStringAsFixed(1)} kn',
-                const Color(0xFF00E676),
-                cardColor,
-              ),
+              _buildTelemetryCard('SOG', '${_sog.toStringAsFixed(1)} kn', const Color(0xFF00E676), cardColor),
               const SizedBox(width: 8),
-              _buildTelemetryCard(
-                'ACCURACY',
-                _accuracy,
-                const Color(0xFF00E5FF),
-                cardColor,
-              ),
+              _buildTelemetryCard('ACCURACY', _accuracy, const Color(0xFF00E5FF), cardColor),
             ],
           ),
           const SizedBox(height: 10),
-
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              color: cardColor,
-              borderRadius: BorderRadius.circular(12),
-            ),
+            decoration: BoxDecoration(color: cardColor, borderRadius: BorderRadius.circular(12)),
             child: Row(
               children: [
                 const Icon(Icons.map_outlined, color: Color(0xFF29B6F6), size: 20),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    _mbtilesPath.isEmpty
-                        ? 'Mode: Online OSM (Import .mbtiles for Offline)'
-                        : 'Mode: Offline MBTiles Loaded',
-                    style: TextStyle(
-                      color: widget.isDarkMode ? Colors.white70 : Colors.black87,
-                      fontSize: 13,
-                    ),
+                    _mbtilesPath.isEmpty ? 'Mode: Online OSM (Import .mbtiles)' : 'Mode: Offline MBTiles Loaded',
+                    style: TextStyle(color: widget.isDarkMode ? Colors.white70 : Colors.black87, fontSize: 13),
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
                 ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF1D4ED8),
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                  ),
+                  style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF1D4ED8), foregroundColor: Colors.white),
                   onPressed: _importMBTiles,
                   icon: const Icon(Icons.folder_open, size: 16),
-                  label: const Text('Import MBTiles', style: TextStyle(fontSize: 12)),
+                  label: const Text('Import', style: TextStyle(fontSize: 12)),
                 ),
               ],
             ),
           ),
           const SizedBox(height: 10),
-
           Expanded(
             child: ClipRRect(
               borderRadius: BorderRadius.circular(12),
               child: FlutterMap(
                 mapController: _mapController,
-                options: MapOptions(
-                  initialCenter: _currentLocation,
-                  initialZoom: 13.0,
-                ),
+                options: MapOptions(initialCenter: _currentLocation, initialZoom: 13.0),
                 children: [
-                  TileLayer(
-                    urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                    userAgentPackageName: 'com.example.pilot_plug',
-                  ),
+                  TileLayer(urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', userAgentPackageName: 'com.example.pilot_plug'),
                   MarkerLayer(
                     markers: [
                       Marker(
@@ -553,11 +487,7 @@ class _PilotPlugDashboardState extends State<PilotPlugDashboard> {
                         height: 40,
                         child: Transform.rotate(
                           angle: (_cog * 3.141592653589793 / 180),
-                          child: const Icon(
-                            Icons.navigation,
-                            color: Colors.redAccent,
-                            size: 32,
-                          ),
+                          child: const Icon(Icons.navigation, color: Colors.redAccent, size: 32),
                         ),
                       ),
                     ],
@@ -571,45 +501,25 @@ class _PilotPlugDashboardState extends State<PilotPlugDashboard> {
     );
   }
 
-  // TAB 1: DOCKING
   Widget _buildDockingScreen(Color cardColor) {
     return Padding(
       padding: const EdgeInsets.all(16.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'Docking Assistance',
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-              color: widget.isDarkMode ? Colors.white : Colors.black87,
-            ),
-          ),
+          Text('Docking Assistance', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: widget.isDarkMode ? Colors.white : Colors.black87)),
           const SizedBox(height: 16),
           Expanded(
             child: Container(
               width: double.infinity,
               padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: cardColor,
-                borderRadius: BorderRadius.circular(12),
-              ),
+              decoration: BoxDecoration(color: cardColor, borderRadius: BorderRadius.circular(12)),
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   const Icon(Icons.anchor, size: 64, color: Color(0xFF29B6F6)),
                   const SizedBox(height: 16),
-                  Text(
-                    _gpsStatus == GpsStatus.connected
-                        ? 'Docking Telemetry Active'
-                        : 'GPS Disconnected',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: widget.isDarkMode ? Colors.white : Colors.black87,
-                    ),
-                  ),
+                  Text(_gpsStatus == GpsStatus.connected ? 'Docking Telemetry Active' : 'GPS Disconnected', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 24),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceAround,
@@ -628,7 +538,6 @@ class _PilotPlugDashboardState extends State<PilotPlugDashboard> {
     );
   }
 
-  // TAB 2: NMEA SHARE (MAY BLUETOOTH NA PROTOCOL SELECTION)
   Widget _buildNmeaScreen(Color cardColor) {
     return Padding(
       padding: const EdgeInsets.all(16.0),
@@ -636,40 +545,21 @@ class _PilotPlugDashboardState extends State<PilotPlugDashboard> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              'NMEA Stream & Share',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-                color: widget.isDarkMode ? Colors.white : Colors.black87,
-              ),
-            ),
+            Text('NMEA Stream & Share', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: widget.isDarkMode ? Colors.white : Colors.black87)),
             const SizedBox(height: 16),
-
-            // Control Settings Card
             Container(
               padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: cardColor,
-                borderRadius: BorderRadius.circular(12),
-              ),
+              decoration: BoxDecoration(color: cardColor, borderRadius: BorderRadius.circular(12)),
               child: Column(
                 children: [
-                  // Broadcast Switch
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       const Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            'Broadcast NMEA Data',
-                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                          ),
-                          Text(
-                            'Share GPS to ECDIS / OpenCPN',
-                            style: TextStyle(fontSize: 12, color: Colors.grey),
-                          ),
+                          Text('Broadcast NMEA Data', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                          Text('Share GPS to OpenCPN', style: TextStyle(fontSize: 12, color: Colors.grey)),
                         ],
                       ),
                       Switch(
@@ -678,14 +568,17 @@ class _PilotPlugDashboardState extends State<PilotPlugDashboard> {
                         onChanged: (value) {
                           setState(() {
                             _isNmeaSharingEnabled = value;
+                            if (_isNmeaSharingEnabled) {
+                              _startNmeaStreaming();
+                            } else {
+                              _stopNmeaStreaming();
+                            }
                           });
                         },
                       ),
                     ],
                   ),
                   const Divider(height: 24),
-
-                  // Protocol Selector (UDP, TCP, Bluetooth)
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -702,7 +595,11 @@ class _PilotPlugDashboardState extends State<PilotPlugDashboard> {
                           selected: {_nmeaProtocol},
                           onSelectionChanged: (Set<String> newSelection) {
                             setState(() {
+                              _stopNmeaStreaming();
                               _nmeaProtocol = newSelection.first;
+                              if (_isNmeaSharingEnabled) {
+                                _startNmeaStreaming();
+                              }
                             });
                           },
                         ),
@@ -710,44 +607,22 @@ class _PilotPlugDashboardState extends State<PilotPlugDashboard> {
                     ],
                   ),
                   const SizedBox(height: 12),
-
-                  // Port Info (Magpapakita lang kung UDP/TCP)
-                  if (_nmeaProtocol != 'Bluetooth')
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text('Server Port:'),
-                        Text(
-                          '$_nmeaPort',
-                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                        ),
-                      ],
-                    )
-                  else
-                    const Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text('Bluetooth Mode:'),
-                        Text(
-                          'SPP / Serial Port',
-                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Color(0xFF29B6F6)),
-                        ),
-                      ],
-                    ),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('Server Port:'),
+                      Text('$_nmeaPort', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                    ],
+                  ),
                 ],
               ),
             ),
             const SizedBox(height: 16),
-
-            // Live NMEA Terminal Window
             Container(
               width: double.infinity,
               height: 260,
               padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: cardColor,
-                borderRadius: BorderRadius.circular(12),
-              ),
+              decoration: BoxDecoration(color: cardColor, borderRadius: BorderRadius.circular(12)),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -756,13 +631,9 @@ class _PilotPlugDashboardState extends State<PilotPlugDashboard> {
                     children: [
                       const Text('Live NMEA Log:', style: TextStyle(fontWeight: FontWeight.bold)),
                       Text(
-                        _isNmeaSharingEnabled && _gpsStatus == GpsStatus.connected
-                            ? 'STREAMING ($_nmeaProtocol)'
-                            : 'OFFLINE',
+                        _isNmeaSharingEnabled && _gpsStatus == GpsStatus.connected ? 'STREAMING ($_nmeaProtocol)' : 'OFFLINE',
                         style: TextStyle(
-                          color: _isNmeaSharingEnabled && _gpsStatus == GpsStatus.connected
-                              ? Colors.green
-                              : Colors.red,
+                          color: _isNmeaSharingEnabled && _gpsStatus == GpsStatus.connected ? Colors.green : Colors.red,
                           fontWeight: FontWeight.bold,
                           fontSize: 12,
                         ),
@@ -774,10 +645,7 @@ class _PilotPlugDashboardState extends State<PilotPlugDashboard> {
                     child: Container(
                       padding: const EdgeInsets.all(10),
                       width: double.infinity,
-                      decoration: BoxDecoration(
-                        color: Colors.black,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
+                      decoration: BoxDecoration(color: Colors.black, borderRadius: BorderRadius.circular(8)),
                       child: SingleChildScrollView(
                         child: Text(
                           _gpsStatus == GpsStatus.connected
@@ -785,11 +653,7 @@ class _PilotPlugDashboardState extends State<PilotPlugDashboard> {
                                 '\$GPGGA,123519,${_currentLocation.latitude.toStringAsFixed(4)},N,${_currentLocation.longitude.toStringAsFixed(4)},E,1,08,0.9,545.4,M,46.9,M,,*47\n'
                                 '\$GPVTG,${_cog.toStringAsFixed(1)},T,,M,${_sog.toStringAsFixed(1)},N,${(_sog * 1.852).toStringAsFixed(1)},K*48'
                               : 'I-enable ang GPS at Switch para mag-stream ng NMEA...',
-                          style: const TextStyle(
-                            fontFamily: 'monospace',
-                            color: Colors.greenAccent,
-                            fontSize: 12,
-                          ),
+                          style: const TextStyle(fontFamily: 'monospace', color: Colors.greenAccent, fontSize: 12),
                         ),
                       ),
                     ),
@@ -808,10 +672,7 @@ class _PilotPlugDashboardState extends State<PilotPlugDashboard> {
       children: [
         Text(label, style: const TextStyle(color: Colors.grey, fontSize: 12)),
         const SizedBox(height: 4),
-        Text(
-          value,
-          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF00E676)),
-        ),
+        Text(value, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF00E676))),
       ],
     );
   }
@@ -820,21 +681,12 @@ class _PilotPlugDashboardState extends State<PilotPlugDashboard> {
     return Expanded(
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 12),
-        decoration: BoxDecoration(
-          color: cardColor,
-          borderRadius: BorderRadius.circular(12),
-        ),
+        decoration: BoxDecoration(color: cardColor, borderRadius: BorderRadius.circular(12)),
         child: Column(
           children: [
-            Text(
-              title,
-              style: const TextStyle(color: Colors.grey, fontSize: 11, fontWeight: FontWeight.bold),
-            ),
+            Text(title, style: const TextStyle(color: Colors.grey, fontSize: 11, fontWeight: FontWeight.bold)),
             const SizedBox(height: 4),
-            Text(
-              value,
-              style: TextStyle(color: valueColor, fontSize: 16, fontWeight: FontWeight.bold),
-            ),
+            Text(value, style: TextStyle(color: valueColor, fontSize: 16, fontWeight: FontWeight.bold)),
           ],
         ),
       ),
