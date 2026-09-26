@@ -102,7 +102,7 @@ class _PilotPlugDashboardState extends State<PilotPlugDashboard> {
 
   // NMEA Share Settings
   bool _isNmeaSharingEnabled = false;
-  String _nmeaProtocol = 'UDP';
+  String _nmeaProtocol = 'UDP'; // Pwedeng UDP, TCP, o BLUETOOTH
   int _nmeaPort = 10110;
 
   StreamSubscription<Position>? _positionStreamSubscription;
@@ -628,7 +628,7 @@ class _PilotPlugDashboardState extends State<PilotPlugDashboard> {
     );
   }
 
-  // TAB 2: NMEA SHARE (MAY MGA BUTTON AT SWITCHES ULIT)
+  // TAB 2: NMEA SHARE (MAY BLUETOOTH NA PROTOCOL SELECTION)
   Widget _buildNmeaScreen(Color cardColor) {
     return Padding(
       padding: const EdgeInsets.all(16.0),
@@ -685,38 +685,55 @@ class _PilotPlugDashboardState extends State<PilotPlugDashboard> {
                   ),
                   const Divider(height: 24),
 
-                  // Protocol Selector
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  // Protocol Selector (UDP, TCP, Bluetooth)
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text('Protocol:'),
-                      SegmentedButton<String>(
-                        segments: const [
-                          ButtonSegment(value: 'UDP', label: Text('UDP')),
-                          ButtonSegment(value: 'TCP', label: Text('TCP')),
-                        ],
-                        selected: {_nmeaProtocol},
-                        onSelectionChanged: (Set<String> newSelection) {
-                          setState(() {
-                            _nmeaProtocol = newSelection.first;
-                          });
-                        },
+                      const Text('Protocol Selection:', style: TextStyle(fontSize: 13, color: Colors.grey)),
+                      const SizedBox(height: 8),
+                      SizedBox(
+                        width: double.infinity,
+                        child: SegmentedButton<String>(
+                          segments: const [
+                            ButtonSegment(value: 'UDP', label: Text('UDP', style: TextStyle(fontSize: 11))),
+                            ButtonSegment(value: 'TCP', label: Text('TCP', style: TextStyle(fontSize: 11))),
+                            ButtonSegment(value: 'Bluetooth', label: Text('Bluetooth', style: TextStyle(fontSize: 11))),
+                          ],
+                          selected: {_nmeaProtocol},
+                          onSelectionChanged: (Set<String> newSelection) {
+                            setState(() {
+                              _nmeaProtocol = newSelection.first;
+                            });
+                          },
+                        ),
                       ),
                     ],
                   ),
                   const SizedBox(height: 12),
 
-                  // Port Info
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text('Server Port:'),
-                      Text(
-                        '$_nmeaPort',
-                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                      ),
-                    ],
-                  ),
+                  // Port Info (Magpapakita lang kung UDP/TCP)
+                  if (_nmeaProtocol != 'Bluetooth')
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text('Server Port:'),
+                        Text(
+                          '$_nmeaPort',
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                        ),
+                      ],
+                    )
+                  else
+                    const Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text('Bluetooth Mode:'),
+                        Text(
+                          'SPP / Serial Port',
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Color(0xFF29B6F6)),
+                        ),
+                      ],
+                    ),
                 ],
               ),
             ),
@@ -740,7 +757,7 @@ class _PilotPlugDashboardState extends State<PilotPlugDashboard> {
                       const Text('Live NMEA Log:', style: TextStyle(fontWeight: FontWeight.bold)),
                       Text(
                         _isNmeaSharingEnabled && _gpsStatus == GpsStatus.connected
-                            ? 'STREAMING ($_nmeaProtocol:$_nmeaPort)'
+                            ? 'STREAMING ($_nmeaProtocol)'
                             : 'OFFLINE',
                         style: TextStyle(
                           color: _isNmeaSharingEnabled && _gpsStatus == GpsStatus.connected
